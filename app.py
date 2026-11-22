@@ -54,16 +54,22 @@ def normalize_language(value: str) -> str:
 
 def shot_chunks(story: str, target_words: int = 42) -> list[str]:
     """Retain every word, ordered, with flexible sentence/paragraph boundaries."""
-    units = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", story.strip()) if s.strip()]
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", story.strip()) if s.strip()]
+    units = []
+    for sentence in sentences:
+        words = sentence.split()
+        # Very long sentences get split into target-sized shot beats, retaining every word.
+        for start in range(0, len(words), target_words):
+            units.append(" ".join(words[start:start + target_words]))
     result: list[str] = []
     current: list[str] = []
     count = 0
-    for sentence in units:
-        words = len(sentence.split())
+    for part in units:
+        words = len(part.split())
         if current and count + words > target_words:
             result.append(" ".join(current))
             current, count = [], 0
-        current.append(sentence)
+        current.append(part)
         count += words
     if current:
         result.append(" ".join(current))
@@ -78,7 +84,8 @@ def new_series(payload: dict) -> dict:
     if target < 30:
         raise ValueError("Episode word target must be at least 30.")
     language = normalize_language(payload.get("language", "en"))
-    shots = shot_chunks(source, max(25, target // 4))
+    # ~160 spoken words/minute: target scene beats of 5–9s, rather than 40-word static shots.
+    shots = shot_chunks(source, max(10, min(22, target // 9)))
     episodes, group, words = [], [], 0
     for shot in shots:
         n = len(shot.split())
@@ -97,7 +104,7 @@ def new_series(payload: dict) -> dict:
                 "id": ident(), "number": number, "script": excerpt,
                 "prompt": "Cinematic, coherent moving shot. Visualize this moment faithfully: " + excerpt,
                 "negative_prompt": "flicker, character drift, distorted face, text artifacts",
-                "duration_hint_seconds": 6, "seed": None, "clip": "", "reference_ids": []
+                "duration_hint_seconds": round(max(3.0, len(excerpt.split()) / 2.6), 1), "seed": None, "clip": "", "reference_ids": []
             })
         planned.append({
             "id": ident(), "number": index, "title": f"Episode {index}",
