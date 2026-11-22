@@ -39,7 +39,7 @@ User hardware: GTX 750 (VRAM detect at runtime; older Maxwell) + Ryzen 5 5600G a
 - App GET voice-options, POST shot voice, GET managed local voice listen, and POST episode narrate; UI engine readiness, per-shot Generate Local Narration, one-click full-episode batch and audio player. Batch stages voices and commits atomically after checks; existing audio untouched; failed partial batch deleted. CPU voice processes are serialized.
 - Added caption_engine.py: exact manual per-shot timecodes, non-overlap and clip-duration validation, mixed manual/estimated SRT generation, FFmpeg libass MP4 burn-in shared by genuine moving-video and CPU motion storyboard exports.
 - Actual video preview is the final MP4 containing burned subtitle pixels; no separate browser overlay. Export QA reports manual/estimated cue counts and caption output mode. Strict libass readiness check in preflight.
-- Regression includes actual image/video FFmpeg media with burned caption pixels and voice retention, CLI-mocked Piper/VoxCPM2 with valid WAV, protected HTTP WAV playback, all-or-nothing episode voice batch, preflight caption errors and full 9:16 storyboard/genuine-footage caption-burn exports.
+- Regression includes actual image/video FFmpeg media with burned caption pixels and voice retention, CLI-mocked Piper/VoxCPM2 with valid WAV, protected HTTP WAV playback, all-or-nothing episode voice batch, preflight caption errors and full 9:16 storyboard/genuine-footage caption-burn exports. **45 tests passed** in [GitHub Linux CI run 45061593330](https://github.com/drizzy-drizz/ai-video-maker/actions/runs/45061593330), HEAD tested `4d1cd4c8`.
 - Primary gap remains: real Piper/VoxCPM2 model listening validation on the user's Windows hardware, automatic forced word alignment, truly generated video diffusion on compatible GPU, full creative multitrack editor and cinematic QA.
 
 See [setup](NARRATION_CAPTIONS_2026_11_23.md). Check current GitHub Actions status for exact latest test count.
@@ -59,5 +59,5 @@ See [setup](NARRATION_CAPTIONS_2026_11_23.md). Check current GitHub Actions stat
 - ComfyUI image handoff requires **API-format** JSON with placeholder in LoadImage node and a compatible model, not editor layout JSON.
 - Current **one-image** reference path feeds one LoadImage placeholder (or many string substitutions, but not distinct character slots).
 - All uploaded paths are local; no remote image download or cloud TTS.
-- SRT is *estimated*; human review mandatory. Technical QA JSON does not detect facial drift, bad audio, emotional pacing.
+- SRT uses **exact user-entered shot-relative captions** where supplied and otherwise explicit estimates; option to burn exact same file into MP4 with libass. **Automatic ASR forced alignment is not implemented.** Technical QA JSON cannot detect facial drift, pronunciation, bad storytelling/emotional pacing.
 - Keep Windows Python3.12 and FFmpeg compatibility. Unit coverage and CI cannot substitute actual Windows render or GPU test.
