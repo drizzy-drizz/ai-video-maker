@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -405,6 +406,9 @@ def render_episode(series_id: str, episode_id: str) -> str:
                     "-c:v", "libx264", "-crf", "21", "-preset", "veryfast",
                     "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-shortest",
                     str(dest)]
+        if audio_exists:
+            # Pad short source audio so -shortest is bounded by VIDEO, not early-ending audio.
+            command[-1:-1] = ["-af", "apad"]
         run_command(command)
         converted.append(dest)
     manifest = work / "concat.txt"
@@ -578,6 +582,8 @@ def main():
     parser.add_argument("--desktop", action="store_true", help="Use pywebview if installed")
     parser.add_argument("--no-browser", action="store_true")
     opts = parser.parse_args()
+    if getattr(sys, "frozen", False):
+        opts.desktop = True  # A packaged .exe should open a real desktop window.
     server = ThreadingHTTPServer(("127.0.0.1", opts.port), AppHandler)
     address = f"http://127.0.0.1:{opts.port}"
     print(f"AI Video Maker running at {address}. Files saved in {DATA}")
@@ -589,8 +595,8 @@ def main():
             webview.create_window("AI Video Maker — Story Studio", address, width=1440, height=900,
                                   min_size=(850, 620))
             webview.start()
-        except ImportError:
-            print("pywebview is not installed. Opening locally in your browser instead.")
+        except (ImportError, RuntimeError) as exc:
+            print("Native window unavailable (" + str(exc) + "); opening locally in a browser instead.")
             webbrowser.open(address)
             worker.join()
         finally:
