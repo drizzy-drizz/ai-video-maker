@@ -17,7 +17,7 @@ A general-purpose Windows-first app: paste a Tagalog or English storyline; build
 
 **Real AI video on a suitable GPU:** Storyline → series/character canon → pinned image references → local ComfyUI image-to-video model → real moving clips → MP4 and QA. GPU and model weights are external requirements and have NOT been validated with real rendered footage.
 
-**Manual video workflow:** Storyline → import/attach user-approved moving clips and narration → FFmpeg episode assembly → estimated SRT and technical report.
+**Editable real-footage timeline:** Storyline → import/attach user-approved moving clips and narration → reorder shots, set source in/out trims, add paired video/audio transitions → technical preflight + source review → FFmpeg H.264/AAC export → manually timed or estimated SRT, optional burned captions and a technical QA timeline report. This does not require paid APIs or a modern video diffusion GPU.
 
 ## Development stage and real-output quality
 
@@ -41,6 +41,14 @@ The story planner now weighs **paragraph/scene endings, sentence boundaries and 
 - **New tests:** real FFmpeg burned subtitle frames, audio retained in MP4, full real-footage and storyboard MP4 exports with exact manual captions, local TTS CLI/WAV output contract tests, protected generated WAV playback and episode-wide voice job rollback.
 
 See [Narration + Captions setup](docs/NARRATION_CAPTIONS_2026_11_23.md) for Windows model-path configuration and commercial-rights precautions.
+
+### Non-destructive editorial timeline (real moving footage)
+
+The real-footage editor now has per-shot source trims (seconds from original video), shot move-earlier/move-later controls, source trim playback, a timing report and actual FFmpeg video/audio transitions: hard cut, fade, wipe-left or slide-left. The original media is never modified. Transitions require fixed video timebases, source duration checks and dialogue-safe overlap; invalid trims, subtitle timing collisions and narration cuts block export.
+
+The final MP4 is encoded using FFmpeg xfade plus acrossfade and plays directly in the desktop viewer. Scene captions use real edited timeline offsets rather than incorrect original duration sums, and source audio is faded on the same boundaries as video. A new renderer version is staged until passing technical checks; edits during render invalidate obsolete output.
+
+**Scope:** applies to genuine moving-video clips (imported or locally generated), not the separate image-only CPU storyboard. Source preview reviews trim points but does not falsely simulate fully encoded transitions in CSS. [Engineering research and acceptance gates](docs/EDITORIAL_TIMELINE_RESEARCH_2026_11_23.md).
 
 ### New quality-first implementation
 
