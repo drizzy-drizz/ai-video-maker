@@ -79,8 +79,9 @@ def episode_unit_groups(units: list[Unit], target: int) -> list[list[Unit]]:
             if total > max_words:
                 break
         if not candidates:
-            # One single unit can exceed max_words; never lose it.
-            end_at = min(start + 1, len(units))
+            # A short remainder is one *episode*, not dozens of one-sentence episodes.
+            remaining = sum(unit.count for unit in units[start:])
+            end_at = len(units) if remaining <= max_words else min(start + 1, len(units))
         else:
             _, end_at = max(candidates, key=lambda item: (item[0], item[1]))
             if end_at == start:
