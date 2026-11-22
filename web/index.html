@@ -37,7 +37,7 @@
 
         <section id="studioView" hidden>
           <div class="studio-intro"><div><div class="eyebrow">SERIES WORKSPACE</div><h1 id="studioTitle"></h1><p id="studioMeta"></p></div><div class="studio-actions"><button class="button ghost" id="copyScript">Copy Original Story</button><button class="button primary" id="saveSeries">Save Changes</button></div></div>
-          <div class="tabs"><button class="tab active" data-tab="episodes">Episodes + Shots</button><button class="tab" data-tab="bible">Series Bible</button><button class="tab" data-tab="source">Original Story</button></div>
+          <div class="tabs"><button class="tab active" data-tab="episodes">Episodes + Shots</button><button class="tab" data-tab="bible">Series Bible</button><button class="tab" data-tab="assets">Asset Library</button><button class="tab" data-tab="source">Original Story</button></div>
 
           <section id="episodeTab">
             <div class="workspace-layout">
@@ -47,11 +47,29 @@
                 <div class="section-header shot-heading"><div><div class="eyebrow">SHOT DIRECTOR</div><h2>Scenes and generated footage</h2></div><span class="hint">Real video, not static slides</span></div>
                 <div id="sceneList"></div>
                 <div class="render-footer"><div><strong>Final episode render</strong><p>Stitches imported/generated moving footage. A missing clip blocks export instead of silently replacing it with slides.</p></div><button id="renderButton" class="button primary">Render Episode →</button></div>
-                <div id="renderPreview" hidden><h3>Episode export</h3><video id="episodeVideo" controls playsinline></video><a id="downloadVideo" class="button ghost" download>Download MP4 ↓</a></div>
+                <div class="render-footer storyboard-panel"><div><strong>CPU Motion Storyboard — GTX 750 friendly</strong><p>Animate your approved reference images with camera movement, optional narration and music. This is a motion storyboard, <b>NOT AI-generated video footage</b>.</p></div><div class="storyboard-actions"><button id="animaticPreflightButton" class="button ghost">Check Images</button><button id="animaticRenderButton" class="button primary">Render Motion Storyboard</button></div></div><div id="animaticPreflightResult" class="preflight-report" hidden></div><div id="animaticPreview" hidden><h3>Motion Storyboard Preview (not diffusion-generated AI video)</h3><video id="animaticVideo" controls playsinline></video><div id="animaticAttachments" class="episode-attachments"></div></div><div id="renderPreview" hidden><h3>Real footage episode export</h3><video id="episodeVideo" controls playsinline></video><a id="downloadVideo" class="button ghost" download>Download MP4 ↓</a></div>
               </div>
             </div>
           </section>
           <section id="bibleTab" hidden><div class="editor-panel"><div class="eyebrow">CONSISTENCY MEMORY</div><h2>Series Bible</h2><p class="muted">Your characters, locations and established canon persist across all episodes. These notes are not overwritten by shot generation.</p><label>World and setting<textarea id="world" rows="3" placeholder="Where and when is this series set?"></textarea></label><label>Visual style<textarea id="style" rows="3" placeholder="Cinematic realism, stylized anime, documentary, painterly..."></textarea></label><label>Canon and continuity rules<textarea id="canon" rows="4" placeholder="History, plot facts, voices, wardrobe, character relationships..."></textarea></label><label>Characters (JSON list; optional for now)<textarea id="characters" rows="6" placeholder='[{"name":"Maria","appearance":"...","wardrobe":"...","reference_image":"C:&#92;&#92;Images&#92;&#92;maria.png"}]'></textarea></label><button id="saveBible" class="button primary">Save Canon</button></div></section>
+          <section id="assetsTab" hidden>
+            <div class="editor-panel">
+              <div class="eyebrow">VERSIONED + LICENSED INGREDIENTS</div><h2>Reference Image Library</h2>
+              <p class="muted">Import approved stills for your story world. Every image is copied into this project's managed library. Replacing a version creates a <strong>new pinned asset ID</strong>; older scenes keep their original images and are never silently changed.</p>
+              <form id="assetForm">
+                <label>Select image (.png, .jpg, .webp; max 25MB)<input id="assetFile" type="file" accept=".png,.jpg,.jpeg,.webp" required></label>
+                <label>Image title<input id="assetTitle" maxlength="120" required placeholder="Maria — approved character reference"></label>
+                <div class="input-grid">
+                  <label>Usage rights<select id="assetRights" required><option value="">Select verified rights...</option><option value="original">Original / my AI generation</option><option value="licensed">Licensed by me</option><option value="permission">Explicit permission</option><option value="public_domain">Verified public domain</option></select></label>
+                  <label>Replace earlier version (optional)<select id="assetReplace"><option value="">New ingredient</option></select></label>
+                </div>
+                <label>Creator / source / license notes<input id="assetCredit" maxlength="1000" placeholder="Creator, source URL, license or model provenance"></label>
+                <button type="submit" id="assetImportButton" class="button primary">Import Image to Library</button>
+              </form>
+              <div class="section-header shot-heading"><div><div class="eyebrow">PINNED REFERENCES</div><h2>Approved image versions</h2></div></div>
+              <div id="assetLibraryList" class="asset-library-list"></div>
+            </div>
+          </section>
           <section id="sourceTab" hidden><div class="editor-panel"><div class="eyebrow">UNCHANGED SOURCE</div><h2>Your original storyline</h2><pre id="originalStory"></pre></div></section>
         </section>
         <footer class="main-footer">AI Video Maker · Original filmmaking workflows · Local-first, offline-capable editing</footer>
