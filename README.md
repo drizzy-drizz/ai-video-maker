@@ -23,6 +23,16 @@ A general-purpose Windows-first app: paste a Tagalog or English storyline; build
 
 **Current machine note:** GTX 750 GPU (older Maxwell, typically very low VRAM) with Ryzen 5 5600G / 16GB RAM. The app performs a local `nvidia-smi` GPU check and clearly warns for GPU configurations unsuitable for Wan2.2 5B. CPU-side scripting and existing video editing still work; local Wan2.2 generation requires a more capable GPU. Read [Quality Gates](docs/QUALITY_GATES_2026_11_23.md) before calling this production-ready.
 
+### New quality-first implementation
+
+- Scene-specific character, wardrobe, location, world and style text canon is composed into the **actual ComfyUI prompt**. Identity is not guaranteed without reference-image support.
+- Scene-local optional human or locally generated audio tracks are accepted and combined with quieter source sound. An overlong narration **blocks export** instead of being silently cut.
+- Click **Check Episode Quality** to validate actual footage duration, narration, aspect ratio, caption speed and missing assets before render.
+- Every successful rendered episode now includes an **estimated SRT subtitle file** and JSON **technical QA report**. The subtitles are scene-proportional, not forced speech alignment; review them before publishing.
+
+[Competitive research: Flow vs Runway vs Kling vs LTX Desktop](docs/COMPETITIVE_RESEARCH_2026_11_23.md).
+
+
 ## Why not claim Google Flow parity yet?
 
 Google Flow supports prompt-to-video, start/end frames, reusable visual ingredients, scene building, and extending. Many advanced features depend on a subscription or credits. We can reproduce its *workflow ideas*, not Google's proprietary Veo/Omni generation quality using only an APU. Open weights are free to download, but compute, storage, and some community licenses may not be free. See research file.
