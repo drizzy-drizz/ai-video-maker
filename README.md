@@ -9,7 +9,15 @@ A general-purpose Windows-first app: paste a Tagalog or English storyline; build
 - Research and implementation blueprint: **documented** (see [docs/RESEARCH_2026-11-23.md](docs/RESEARCH_2026-11-23.md)).
 - Working foundation: series/story library; automatic editable episode-and-shot planning; non-destructive **local Qwen AI Director** suggestions; series bible; local ComfyUI video queue; FFmpeg real-clip stitching; preview/download; Linux media regression tests. This is **not** Google Flow quality parity yet.
 - Target platforms: Windows desktop; local network services bound to loopback by default.
-- Existing developer hardware context: Ryzen 5 5600G APU, 16 GB RAM, no discrete GPU. That hardware can plan stories and edit/encode low-resolution video, but modern diffusion-based video generation is not reasonably fast on CPU alone.
+- Current developer machine: Ryzen 5 5600G, 16 GB RAM, **GeForce GTX 750** (older Maxwell GPU). This machine can edit and CPU-encode a motion storyboard, but it cannot practically run modern high-quality video diffusion models like Wan2.2 5B.
+
+## Three separate honest workflows
+
+**Local motion storyboard — complete CPU feature:** Storyline → editable scenes → upload licensed/approved still images to an immutable versioned asset library → pin images to shots → select camera movement and duration → optionally supply a narration file per scene and rights-confirmed music → **Check Images** → **Render Motion Storyboard** → actual 9:16 or 16:9 animated MP4, scene-timed estimated SRT, technical QA JSON. This uses FFmpeg zoom/pan on still images, **NOT diffusion-generated moving AI video**. A GTX 750 is not needed; CPU does the work. Uploaded image versions never silently change old scene assignments.
+
+**Real AI video on a suitable GPU:** Storyline → series/character canon → pinned image references → local ComfyUI image-to-video model → real moving clips → MP4 and QA. GPU and model weights are external requirements and have NOT been validated with real rendered footage.
+
+**Manual video workflow:** Storyline → import/attach user-approved moving clips and narration → FFmpeg episode assembly → estimated SRT and technical report.
 
 ## The two workflows
 
