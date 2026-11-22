@@ -187,6 +187,42 @@ class OfflineVoiceTests(unittest.TestCase):
             self.assertEqual(saved["episodes"][0]["scenes"][0]["narration"], actual)
             self.assertTrue(Path(actual).is_file())
             self.assertFalse(saved["episodes"][0]["scenes"][0]["voice_provenance"]["quality_reviewed"])
+            # Real local HTTP playback has no arbitrary-path access: only managed TTS WAV.
+            import threading
+            import urllib.request
+            from http.server import ThreadingHTTPServer
+            server = ThreadingHTTPServer(("127.0.0.1", 0), app.AppHandler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                url = (f"http://127.0.0.1:{server.server_port}/api/series/"
+                       f"{project['id']}/episodes/{episode_id}/scenes/{scene_id}/listen")
+                with urllib.request.urlopen(url, timeout=10) as response:
+                    self.assertEqual(response.headers.get_content_type(), "audio/wav")
+                    self.assertGreater(len(response.read()), 1000)
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{server.server_port}/api/voice-options?language=en",
+                    timeout=10
+                ) as response:
+                    self.assertEqual(len(json.load(response)["backends"]), 2)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=10)
+            def altered_mid_generation(text, language, engine, destination, confirmed):
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                make_wav(destination)
+                updated = app.read_project(project["id"])
+                updated["episodes"][0]["scenes"][0]["script"] = "Someone edited this scene."
+                app.save_project(updated)
+                return {"engine": "piper", "duration_seconds": 1.1, "wav": str(destination)}
+            with patch("app.voice_engine.generate_wav", side_effect=altered_mid_generation):
+                with self.assertRaisesRegex(RuntimeError, "text changed"):
+                    app.generate_scene_voice(project["id"], episode_id, scene_id, "piper", True)
+            # The last approved audio and its provenance remain unchanged.
+            after = app.read_project(project["id"])["episodes"][0]["scenes"][0]
+            self.assertEqual(after["narration"], actual)
+            self.assertEqual(after["voice_provenance"]["engine"], "piper")
         finally:
             app.DATA = old
 
