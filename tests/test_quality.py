@@ -62,6 +62,47 @@ class CanonTests(unittest.TestCase):
         self.assertIn("missing_video", [f["code"] for f in report["findings"]])
         mocked.assert_not_called()
 
+    def test_reference_selection_explicit_then_character(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            character = root / "character.png"
+            direct = root / "shot.webp"
+            character.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+            direct.write_bytes(b"RIFF\x80\x00\x00\x00WEBP" + b"\x00" * 100)
+            series = {"bible": {"characters": [
+                {"name": "Maria", "reference_image": str(character)}
+            ]}}
+            scene = {"script": "Maria raises a hand", "prompt": "Camera tracks Maria."}
+            self.assertEqual(quality.reference_image_for_scene(series, scene), character)
+            scene["reference_image"] = str(direct)
+            self.assertEqual(quality.reference_image_for_scene(series, scene), direct)
+            quality.validate_image(direct)
+            quality.validate_image(character)
+
+    def test_invalid_reference_image_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            invalid = Path(temporary) / "bad.png"
+            invalid.write_text("not an actual PNG header")
+            with self.assertRaisesRegex(ValueError, "file header"):
+                quality.validate_image(invalid)
+
+    def test_comfy_reference_upload_form_payload(self):
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as temporary:
+            reference = Path(temporary) / "maria.png"
+            reference.write_bytes(b"\x89PNG\r\n\x1a\n" + b"image-fixture")
+            class Response:
+                def __enter__(self): return self
+                def __exit__(self, *unused): return None
+                def read(self): return b'{"name":"uploaded.png","type":"input","subfolder":""}'
+            with patch("app.urllib.request.urlopen", return_value=Response()) as send:
+                result = app.upload_reference_to_comfy(reference)
+                self.assertEqual(result, "uploaded.png")
+                sent_request = send.call_args.args[0]
+                self.assertIn(b'Content-Disposition: form-data; name="image"', sent_request.data)
+                self.assertIn(b"image-fixture", sent_request.data)
+                self.assertIn("/upload/image", sent_request.full_url)
+
     def test_technical_qc_detects_duration_mismatch(self):
         with patch("studio_quality.media_info", return_value={
             "duration": 5, "has_video": True, "has_audio": True,
