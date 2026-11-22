@@ -7,6 +7,21 @@ Build a **general** (no horror-only presets) **Tagalog + English** episodic face
 
 User hardware: GTX 750 (VRAM detect at runtime; older Maxwell) + Ryzen 5 5600G and 16GB RAM. GTX 750 is not sufficient for modern local Wan2.2 5B diffusion. Story/shot planning, asset management, imported footage and CPU FFmpeg assembly remain possible.
 
+## Latest implementation — full real-video editorial timeline (2026-11-23)
+
+Code is on latest main; see [editorial research and acceptance gates](EDITORIAL_TIMELINE_RESEARCH_2026_11_23.md).
+
+- New timeline_engine.py: full ffprobe-derived non-destructive edit decision model, source in/out, scene IDs/order, 0.10–1.50-second cut/fade/wipeleft/slideleft transitions. Crossfades require <=45% of both adjacent scenes. Windows/FFmpeg performance can vary.
+- Real MP4 pipeline: normalize source-clock trims at 24fps with H.264/AAC, group hard cuts using concat demuxer, FFmpeg video xfade plus audio acrossfade at exact boundaries, preserve source files. Serial render lock remains.
+- Incoming scene narration is delayed until its incoming transition finishes. Outgoing narration must finish before next transition. Overrun is reported before rendering rather than silently cutting words.
+- caption_engine.py: timeline-global SRT offsets with per-scene transition midpoint handoff; exact manual cues are rejected if they intrude on ambiguous transition regions, approximate cues are distributed in safe windows, final MP4 uses same SRT burn-in.
+- GET /api/.../timeline returns source and final edit decisions; GET /api/.../scenes/{id}/source streams locally attached video with Range support for trim preview. Source preview is *not* claimed to reproduce FFmpeg filters; rendered MP4 is authority.
+- Web UI: trim in/out, reorder earlier/later (renumber and preserve shot IDs), select effect+overlap, source trim playback, inspect full timeline timing, render edited MP4. Save now preserves current scene object identity so future inputs don't silently mutate stale closures.
+- Renderer stages MP4+SRT+technical QA, rejects stale editor revisions before publishing, preserves previously playable output on failed technical QA or changed timeline.
+- Tests/test_timeline.py contains source-window/caption math, real FFmpeg clips with mixed hard cuts/fade/wipe and audio, narration safety; *check latest GitHub Actions before marking this workstream fully validated*.
+- NOTE: This applies to **genuine moving-video edits only**, not the independent CPU still-image storyboard pipeline. There is no complete multitrack drag/drop NLE, OTIO import/export, real-shot transition preview simulation, fully automated speech alignment, or validated end-to-end Wan on GTX 750.
+- Research context: [FFmpeg xfade/acrossfade](https://www.ffmpeg.org/ffmpeg-filters.html) and [OpenTimelineIO](https://opentimelineio.readthedocs.io/en/latest/index.html). An upstream whisper.cpp VAD timing issue is one reason not to claim automatic word-perfect Filipino captions without tests.
+
 ## Newest finished vertical slice — CPU motion storyboard + managed ingredients (2026-11-23)
 
 - asset_library.py: source+rights-confirmed native file upload with checksum, immutable versions, stable asset IDs, source/rights/credit metadata. Old references never update when new images are imported as a replacement.
