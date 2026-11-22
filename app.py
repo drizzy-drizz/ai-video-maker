@@ -22,6 +22,7 @@ import studio_quality as quality
 import story_planner
 import asset_library
 import animatic
+import caption_engine
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -499,6 +500,9 @@ def render_episode(series_id: str, episode_id: str) -> str:
                     for issue in report["findings"] if issue["level"] == "blocker"]
         raise ValueError("Export blocked by scene preflight: " + "; ".join(blockers))
     soundtrack = animatic.validated_music(episode)
+    caption_engine.validate_caption_project(scenes, [
+        quality.media_info(Path(scene["clip"]))["duration"] for scene in scenes
+    ])
     width, height = (720, 1280) if project["format"] == "9:16" else (1280, 720)
     work = DATA / "renders" / series_id / episode_id
     work.mkdir(parents=True, exist_ok=True)
@@ -545,22 +549,28 @@ def render_episode(series_id: str, episode_id: str) -> str:
     exports.mkdir(parents=True, exist_ok=True)
     target = exports / (episode_id + ".mp4")
     assembled = work / "assembled.mp4"
+    prepared = work / "pre-caption.mp4"
     staging = work / "final-staging.mp4"
     run_command(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0",
                  "-i", str(manifest), "-c", "copy", "-movflags", "+faststart", str(assembled)])
     if soundtrack:
-        animatic.apply_soundtrack(assembled, soundtrack, sum(durations), staging)
+        animatic.apply_soundtrack(assembled, soundtrack, sum(durations), prepared)
     else:
-        shutil.copy2(assembled, staging)
+        shutil.copy2(assembled, prepared)
+    subtitle_path = exports / (episode_id + ".srt")
+    qc_path = exports / (episode_id + "-quality.json")
+    subtitle_text, caption_stats = caption_engine.build_srt(scenes, durations)
+    subtitle_path.write_text(subtitle_text, encoding="utf-8-sig")
+    caption_output = caption_engine.apply_caption_mode(
+        prepared, subtitle_path, staging, episode.get("caption_mode") or "sidecar", height=height)
     qc = quality.quality_report_export(staging, sum(durations))
     qc["warnings"] = [item for item in report["findings"] if item["level"] == "advisory"]
-    qc["subtitles"] = "approximate (scene text proportional to clip durations); review before posting"
+    qc.update(caption_stats)
+    qc["caption_export"] = caption_output["mode"]
+    qc["subtitles"] = "manual cues where supplied; otherwise rough scene timing — review before publishing"
     qc["music_included"] = bool(soundtrack)
     if qc["issues"]:
         raise RuntimeError("Export technical QA failed: " + "; ".join(qc["issues"]))
-    subtitle_path = exports / (episode_id + ".srt")
-    qc_path = exports / (episode_id + "-quality.json")
-    subtitle_path.write_text(quality.make_subtitles(scenes, durations), encoding="utf-8-sig")
     qc_path.write_text(json.dumps(qc, ensure_ascii=False, indent=2), encoding="utf-8")
     # Never overwrite a previously playable episode with an incomplete export.
     os.replace(staging, target)
