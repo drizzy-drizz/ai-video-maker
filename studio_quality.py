@@ -159,6 +159,19 @@ def episode_preflight(series: dict, episode: dict) -> dict:
         add("advisory", "no_canon", "No continuity rules defined yet")
     if not any(s.get("narration") for s in scenes):
         add("advisory", "no_narration", "No scene narration audio supplied; text captions are timing estimates")
+    soundtrack = normalized_path(episode.get("soundtrack"))
+    if soundtrack:
+        if not episode.get("soundtrack_rights_confirmed"):
+            add("blocker", "music_rights", "Confirm that you own or have permission to use this soundtrack")
+        if not soundtrack.is_file() or soundtrack.suffix.lower() not in AUDIO_EXTENSIONS:
+            add("blocker", "missing_soundtrack", "Soundtrack is missing or has an unsupported file type")
+        else:
+            try:
+                sound = media_info(soundtrack)
+                if not sound["has_audio"] or sound["duration"] < 0.2:
+                    add("blocker", "invalid_soundtrack", "Soundtrack contains no usable audio stream")
+            except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+                add("blocker", "invalid_soundtrack", str(exc)[:260])
 
     for i, scene in enumerate(scenes, 1):
         num = scene.get("number") or i
