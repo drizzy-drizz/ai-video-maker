@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+node_modules/
+dist/
+build/
+*.spec
+*.log
+.env
+.env.*
+!*.example
+*.mp4
+*.wav
+*.safetensors
+*.gguf
+AI-Video-Maker/
