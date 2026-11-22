@@ -19,12 +19,6 @@ A general-purpose Windows-first app: paste a Tagalog or English storyline; build
 
 **Manual video workflow:** Storyline → import/attach user-approved moving clips and narration → FFmpeg episode assembly → estimated SRT and technical report.
 
-## The two workflows
-
-**Creative:** Storyline → Series Bible → Episode Outline → Shot List → Reference Assets / Voices → AI Video Generation → Timeline → Narration, SFX, Captions → QA → Export.
-
-**Hardware-safe:** Storyline → Series Bible → Episodes → Edit shot list → Import existing/generated clips → Assemble/export locally. Works independently of a paid inference provider. Generative engines are optional and must report availability instead of silently substituting slides.
-
 ## Development stage and real-output quality
 
 **This is a foundation/prototype, NOT a finished Google Flow competitor.** It has basic real-footage stitching, but not an end-to-end automatically generated cinematic episode: natural bilingual narration, multitrack sound design, subtitles, consistently generated characters, and subjective video-quality QA are still missing. Passing automated FFmpeg tests or packaging a Windows EXE does **not** mean the export looks good.
@@ -42,9 +36,9 @@ The story planner now weighs **paragraph/scene endings, sentence boundaries and 
 ### New quality-first implementation
 
 - Scene-specific character, wardrobe, location, world and style text canon is composed into the **actual ComfyUI prompt**. Identity is not guaranteed without reference-image support.
-- Scene-local optional human or locally generated audio tracks are accepted and combined with quieter source sound. An overlong narration **blocks export** instead of being silently cut.
+- Scene-local optional human or locally generated audio tracks are accepted and combined with quieter source sound. An overlong narration **blocks real-footage export** instead of being silently cut. Storyboard scenes automatically extend to fit narration. Licensed, user-confirmed episode music can now be mixed into **both** export modes.
 - Click **Check Episode Quality** to validate actual footage duration, narration, aspect ratio, caption speed and missing assets before render.
-- Every successful rendered episode now includes an **estimated SRT subtitle file** and JSON **technical QA report**. The subtitles are scene-proportional, not forced speech alignment; review them before publishing.
+- Every successful rendered episode now includes an **estimated SRT subtitle file** and JSON **technical QA report**. The subtitles are scene-proportional, not forced speech alignment; review them before publishing. Real footage and motion-storyboard modes publish their MP4 only after codec/duration QA, preserving the previously playable export on failure.
 
 [Competitive research: Flow vs Runway vs Kling vs LTX Desktop](docs/COMPETITIVE_RESEARCH_2026_11_23.md).
 
@@ -67,7 +61,7 @@ Google Flow supports prompt-to-video, start/end frames, reusable visual ingredie
 
 Clone or download this GitHub repository and double-click `start-windows.bat`. Python 3.12 is recommended; pywebview is optional for a native window (`py -3.12 -m pip install -r requirements-desktop.txt`). Install FFmpeg/FFprobe for actual MP4 export. The editor opens locally at `http://127.0.0.1:8766`. Optional AI Director: run Ollama locally and `ollama pull qwen3:4b`. Optional moving AI footage: run ComfyUI locally with a GPU and an installed real-video model, then import an API-format JSON workflow with `{{PROMPT}}` placeholder. All data saves under your Windows home folder in `AI-Video-Maker`.
 
-A separate [Windows desktop build workflow](.github/workflows/windows-build.yml) packages a portable application folder as a downloadable GitHub Actions artifact; an executable build is not proof of full Windows media/model compatibility. See [setup](docs/WINDOWS_SETUP.md).
+A separate [Windows desktop build workflow](.github/workflows/windows-build.yml) performs a Windows runtime smoke test (local HTTP server, creation/retrieval of a story and UI load) and packages a portable application folder as a GitHub Actions artifact; a passing smoke test is not proof of full Windows GPU/media compatibility. See [setup](docs/WINDOWS_SETUP.md).
 
 ## Implementation priorities
 
