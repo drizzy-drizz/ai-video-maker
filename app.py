@@ -34,6 +34,7 @@ DATA = Path(os.environ.get("AIVM_DATA_DIR", str(Path.home() / "AI-Video-Maker"))
 DATA.mkdir(parents=True, exist_ok=True)
 LOCK = threading.RLock()
 RENDER_LOCK = threading.Lock()  # Serialize CPU-heavy episode exports; do not corrupt temp clips.
+VOICE_LOCK = threading.Lock()   # Prevent concurrent CPU-heavy local voice inference jobs.
 JOBS: dict[str, dict] = {}
 EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm"}
 COMFY = os.environ.get("AIVM_COMFY_URL", "http://127.0.0.1:8188").rstrip("/")
@@ -335,6 +336,9 @@ def post_job(job_type: str, func, *args) -> str:
             if job_type in ("render", "motion-storyboard"):
                 with RENDER_LOCK:
                     output = func(*args)
+            elif job_type in ("offline-voice", "episode-narration"):
+                with VOICE_LOCK:
+                    output = func(*args)
             else:
                 output = func(*args)
             with LOCK:
@@ -608,6 +612,57 @@ def generate_scene_voice(series_id: str, episode_id: str, scene_id: str,
     return str(destination)
 
 
+def generate_episode_voices(series_id: str, episode_id: str, engine: str,
+                            rights_confirmed: bool) -> str:
+    """Stage missing scene voices, then attach atomically when every WAV validates."""
+    if not rights_confirmed:
+        raise ValueError("Voice/reference/model rights must be confirmed")
+    with LOCK:
+        project = read_project(series_id)
+        episode = copy.deepcopy(pick_episode(project, episode_id))
+    missing = []
+    skipped = 0
+    for scene in episode["scenes"]:
+        current = scene.get("narration")
+        if current and Path(current).is_file():
+            skipped += 1
+            continue  # Preserve manually approved or previously generated narration.
+        missing.append(scene)
+    if not missing:
+        return f"All {skipped} scene narration files already exist; no speech was replaced."
+    created = []
+    try:
+        for scene in missing:
+            folder = DATA / "narrations" / series_id / episode_id
+            target = folder / (scene["id"] + "-" + uuid.uuid4().hex[:12] + ".wav")
+            result = voice_engine.generate_wav(
+                scene["script"], project["language"], engine, target, rights_confirmed)
+            created.append({"scene_id": scene["id"], "script": scene["script"],
+                            "previous_narration": scene.get("narration") or "",
+                            "output": result, "target": target})
+        with LOCK:
+            latest = read_project(series_id)
+            final_episode = pick_episode(latest, episode_id)
+            # Check ALL scripts and previous voice assignments before changing a single scene.
+            for item in created:
+                now_scene = pick_scene(final_episode, item["scene_id"])
+                if (now_scene["script"] != item["script"] or
+                        str(now_scene.get("narration") or "") != item["previous_narration"]):
+                    raise RuntimeError(
+                        "Series was edited during episode narration; no generated voice was attached.")
+            for item in created:
+                now_scene = pick_scene(final_episode, item["scene_id"])
+                now_scene["narration"] = str(item["target"])
+                now_scene["voice_provenance"] = item["output"]
+            save_project(latest)
+        return (f"{len(created)} voice files generated and attached atomically; "
+                f"{skipped} pre-existing voice files preserved.")
+    except Exception:
+        for item in created:
+            item["target"].unlink(missing_ok=True)
+        raise
+
+
 def render_animatic_episode(series_id: str, episode_id: str) -> str:
     """Build a fully separate motion storyboard, without editing genuine-video clips."""
     with LOCK:
@@ -768,6 +823,25 @@ class AppHandler(BaseHTTPRequestHandler):
                     return self.respond(meta, 201)
                 finally:
                     temp_path.unlink(missing_ok=True)
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "narrate" and method == "POST":
+                project_id, episode_id = parts[2], parts[4]
+                project = read_project(project_id)
+                pick_episode(project, episode_id)
+                payload = self.incoming()
+                requested = str(payload.get("engine") or "auto")
+                if requested not in ("auto", "piper", "voxcpm2"):
+                    raise ValueError("Invalid offline voice engine")
+                if payload.get("rights_confirmed") is not True:
+                    raise ValueError("Confirm all voice/reference/model usage rights")
+                chosen = requested if requested != "auto" else voice_engine.voice_options(project["language"])["recommended"]
+                if not chosen:
+                    raise ValueError("No installed local voice model for " + project["language"])
+                status = voice_engine.configured_backend(project["language"], chosen)
+                if not status["available"]:
+                    raise ValueError(chosen + ": " + status["reason"])
+                return self.respond({"job_id": post_job(
+                    "episode-narration", generate_episode_voices,
+                    project_id, episode_id, chosen, True)}, 202)
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "animatic-preflight" and method == "GET":
                 series = read_project(parts[2])
                 return self.respond(animatic.preflight_animatic(series, pick_episode(series, parts[4])))
