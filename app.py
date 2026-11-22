@@ -23,6 +23,7 @@ import story_planner
 import asset_library
 import animatic
 import caption_engine
+import timeline_engine
 import voice_engine
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -505,23 +506,24 @@ def render_episode(series_id: str, episode_id: str) -> str:
                     for issue in report["findings"] if issue["level"] == "blocker"]
         raise ValueError("Export blocked by scene preflight: " + "; ".join(blockers))
     soundtrack = animatic.validated_music(episode)
-    caption_engine.validate_caption_project(scenes, [
-        quality.media_info(Path(scene["clip"]))["duration"] for scene in scenes
-    ])
+    planned_timeline = timeline_engine.plan_episode(project, episode)
     width, height = (720, 1280) if project["format"] == "9:16" else (1280, 720)
     work = DATA / "renders" / series_id / episode_id
     work.mkdir(parents=True, exist_ok=True)
     converted = []
     durations = []
     for i, scene in enumerate(scenes):
-        source = Path(scene["clip"]).expanduser().resolve()
+        edit = planned_timeline["entries"][i]
+        source = Path(edit["clip"])
         if source.suffix.lower() not in EXTENSIONS:
             raise ValueError("Unsupported footage extension: " + source.suffix)
         dest = work / f"scene-{i:05d}.mp4"
         source_info = quality.media_info(source)
-        duration = source_info["duration"]
+        duration = edit["duration"]
+        voice_delay_ms = round(edit["previous_overlap"] * 1000)
         narration = quality.normalized_path(scene.get("narration"))
-        command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source)]
+        command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                   "-ss", f"{edit['source_start']:.6f}", "-i", str(source)]
         if narration:
             command += ["-i", str(narration)]
         elif not source_info["has_audio"]:
@@ -534,46 +536,55 @@ def render_episode(series_id: str, episode_id: str) -> str:
             # Pad both audio tracks so early audio endings never truncate the video.
             command += ["-filter_complex",
                         "[0:a:0]volume=0.18,aresample=48000,apad[bg];"
-                        "[1:a:0]aresample=48000,apad[voice];"
+                        f"[1:a:0]aresample=48000,adelay={voice_delay_ms}:all=1,apad[voice];"
                         "[bg][voice]amix=inputs=2:duration=longest:normalize=0,"
                         "alimiter=limit=0.95[mix]",
                         "-map", "0:v:0", "-map", "[mix]"]
         else:
             command += ["-map", "0:v:0", "-map",
                         "1:a:0" if narration or not source_info["has_audio"] else "0:a:0",
-                        "-af", "aresample=48000,apad"]
+                        "-af", f"aresample=48000,adelay={voice_delay_ms}:all=1,apad"]
         command += ["-vf", video_filter, "-c:v", "libx264", "-crf", "21",
                     "-preset", "veryfast", "-c:a", "aac", "-b:a", "160k",
                     "-ar", "48000", "-ac", "2", "-t", f"{duration:.6f}", str(dest)]
         run_command(command)
         converted.append(dest)
         durations.append(quality.media_info(dest)["duration"])
-    manifest = work / "concat.txt"
-    manifest.write_text("".join("file '" + p.name + "'\n" for p in converted), encoding="utf-8")
+    encoded_timeline = timeline_engine.with_durations(planned_timeline["entries"], durations)
+    assembled = timeline_engine.assemble_segments(converted, encoded_timeline, work)
     exports = DATA / "exports" / series_id
     exports.mkdir(parents=True, exist_ok=True)
     target = exports / (episode_id + ".mp4")
-    assembled = work / "assembled.mp4"
     prepared = work / "pre-caption.mp4"
     staging = work / "final-staging.mp4"
-    run_command(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0",
-                 "-i", str(manifest), "-c", "copy", "-movflags", "+faststart", str(assembled)])
     if soundtrack:
-        animatic.apply_soundtrack(assembled, soundtrack, sum(durations), prepared)
+        animatic.apply_soundtrack(assembled, soundtrack, encoded_timeline["total_seconds"], prepared)
     else:
         shutil.copy2(assembled, prepared)
     subtitle_path = exports / (episode_id + ".srt")
     qc_path = exports / (episode_id + "-quality.json")
-    subtitle_text, caption_stats = caption_engine.build_srt(scenes, durations)
+    subtitle_text, caption_stats = caption_engine.build_srt(
+        scenes, durations, timeline=encoded_timeline["entries"])
     subtitle_path.write_text(subtitle_text, encoding="utf-8-sig")
     caption_output = caption_engine.apply_caption_mode(
         prepared, subtitle_path, staging, episode.get("caption_mode") or "sidecar", height=height)
-    qc = quality.quality_report_export(staging, sum(durations))
+    qc = quality.quality_report_export(staging, encoded_timeline["total_seconds"])
     qc["warnings"] = [item for item in report["findings"] if item["level"] == "advisory"]
     qc.update(caption_stats)
     qc["caption_export"] = caption_output["mode"]
     qc["subtitles"] = "manual cues where supplied; otherwise approximate scene timing — review before publishing"
     qc["music_included"] = bool(soundtrack)
+    qc["timeline"] = {
+        "source_trims": len(scenes), "crossfades": encoded_timeline["crossfades"],
+        "total_seconds": encoded_timeline["total_seconds"],
+        "boundaries": encoded_timeline["boundaries"],
+        "shots": [{
+            "scene_id": item["scene_id"], "source_start": item["source_start"],
+            "source_end": item["source_end"], "start": item["start"], "end": item["end"],
+            "previous_overlap": item["previous_overlap"],
+            "next_overlap": item["next_overlap"]
+        } for item in encoded_timeline["entries"]]
+    }
     if qc["issues"]:
         raise RuntimeError("Export technical QA failed: " + "; ".join(qc["issues"]))
     qc_path.write_text(json.dumps(qc, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -852,6 +863,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.incoming()
                 return self.respond({"job_id": post_job("motion-storyboard", render_animatic_episode,
                                                         project_id, episode_id)}, 202)
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "timeline" and method == "GET":
+                series = read_project(parts[2])
+                episode = pick_episode(series, parts[4])
+                return self.respond(timeline_engine.plan_episode(series, episode))
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "preflight" and method == "GET":
                 series = read_project(parts[2])
                 return self.respond(quality.episode_preflight(series, pick_episode(series, parts[4])))
@@ -871,6 +886,16 @@ class AppHandler(BaseHTTPRequestHandler):
                 project_id, episode_id = parts[2], parts[4]
                 pick_episode(read_project(project_id), episode_id)
                 return self.respond({"job_id": post_job("render", render_episode, project_id, episode_id)}, 202)
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "source" and method == "GET"):
+                series = read_project(parts[2])
+                shot = pick_scene(pick_episode(series, parts[4]), parts[6])
+                clip = quality.normalized_path(shot.get("clip"))
+                if not clip or clip.suffix.lower() not in EXTENSIONS or not clip.is_file():
+                    raise FileNotFoundError("Shot has no playable moving-video source")
+                types = {".mp4": "video/mp4", ".webm": "video/webm",
+                         ".mov": "video/quicktime", ".mkv": "video/x-matroska"}
+                return self.serve_file(clip, types[clip.suffix.lower()])
             if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
                     and parts[7] == "listen" and method == "GET"):
                 series = read_project(parts[2])
