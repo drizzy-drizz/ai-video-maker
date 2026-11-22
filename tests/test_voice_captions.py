@@ -264,7 +264,7 @@ class OfflineVoiceTests(unittest.TestCase):
                 app.save_project(updated)
                 return {"engine": "piper", "duration_seconds": 1.1, "wav": str(destination)}
             with patch("app.voice_engine.generate_wav", side_effect=altered_mid_generation):
-                with self.assertRaisesRegex(RuntimeError, "text changed"):
+                with self.assertRaisesRegex(RuntimeError, "text or narration changed"):
                     app.generate_scene_voice(project["id"], episode_id, scene_id, "piper", True)
             # The last approved audio and its provenance remain unchanged.
             after = app.read_project(project["id"])["episodes"][0]["scenes"][0]
