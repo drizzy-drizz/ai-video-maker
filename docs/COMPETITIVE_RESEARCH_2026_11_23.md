@@ -28,7 +28,9 @@ Reviewed 2026-11-23. Primary documentation only. This is a *feature comparison*,
 
 ## Implementation milestones
 
-### Complete in the new quality-first batch
+**New additional delivery:** The deterministic episode planner now favors natural story paragraph/scene breaks and source-preserving shot coverage, instead of naive fixed-word splitting. It is not a full semantic AI screenwriter; true story-act planning remains open.
+
+### Complete in the new quality-first batch### Complete in the new quality-first batch
 - [x] Research current competitors using primary docs
 - [x] Scene-specific characters and Bible injected into real-video prompts (text only)
 - [x] Scene character assignments and optional narration audio inputs in studio UI
