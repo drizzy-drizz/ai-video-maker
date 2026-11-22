@@ -17,6 +17,12 @@ A general-purpose Windows-first app: paste a Tagalog or English storyline; build
 
 **Hardware-safe:** Storyline → Series Bible → Episodes → Edit shot list → Import existing/generated clips → Assemble/export locally. Works independently of a paid inference provider. Generative engines are optional and must report availability instead of silently substituting slides.
 
+## Development stage and real-output quality
+
+**This is a foundation/prototype, NOT a finished Google Flow competitor.** It has basic real-footage stitching, but not an end-to-end automatically generated cinematic episode: natural bilingual narration, multitrack sound design, subtitles, consistently generated characters, and subjective video-quality QA are still missing. Passing automated FFmpeg tests or packaging a Windows EXE does **not** mean the export looks good.
+
+**Current machine note:** GTX 750 GPU (older Maxwell, typically very low VRAM) with Ryzen 5 5600G / 16GB RAM. The app performs a local `nvidia-smi` GPU check and clearly warns for GPU configurations unsuitable for Wan2.2 5B. CPU-side scripting and existing video editing still work; local Wan2.2 generation requires a more capable GPU. Read [Quality Gates](docs/QUALITY_GATES_2026_11_23.md) before calling this production-ready.
+
 ## Why not claim Google Flow parity yet?
 
 Google Flow supports prompt-to-video, start/end frames, reusable visual ingredients, scene building, and extending. Many advanced features depend on a subscription or credits. We can reproduce its *workflow ideas*, not Google's proprietary Veo/Omni generation quality using only an APU. Open weights are free to download, but compute, storage, and some community licenses may not be free. See research file.
