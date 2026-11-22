@@ -101,6 +101,7 @@ class CaptionEditorTests(unittest.TestCase):
 
 class OfflineVoiceTests(unittest.TestCase):
     def setUp(self):
+        self.real_subprocess_run = subprocess.run
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.model = self.root / "voice.onnx"
@@ -115,6 +116,8 @@ class OfflineVoiceTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def fake_piper(self, command, **kwargs):
+        if command[0] == "ffprobe":
+            return self.real_subprocess_run(command, **kwargs)
         self.assertIn("--model", command)
         self.assertIn("--output_file", command)
         self.assertIn("Hello", kwargs.get("input", ""))
@@ -122,6 +125,8 @@ class OfflineVoiceTests(unittest.TestCase):
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     def fake_voxcpm(self, command, **kwargs):
+        if command[0] == "ffprobe":
+            return self.real_subprocess_run(command, **kwargs)
         self.assertIn("-t", command)
         self.assertIn("Kumusta", command)
         make_wav(Path(command[command.index("-o") + 1]))
@@ -172,6 +177,7 @@ class OfflineVoiceTests(unittest.TestCase):
             scene_id = project["episodes"][0]["scenes"][0]["id"]
             episode_id = project["episodes"][0]["id"]
             def attached(text, language, engine, destination, confirmed):
+                destination.parent.mkdir(parents=True, exist_ok=True)
                 make_wav(destination)
                 return {"engine": "piper", "duration_seconds": 1.1,
                         "wav": str(destination), "quality_reviewed": False}
