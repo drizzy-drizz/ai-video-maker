@@ -28,7 +28,7 @@ The existing v0.x is **a prototype**, not a finished Flow alternative. It has ed
 - Narrator/character voice is natural, intelligible and language-correct in both English and Tagalog.
 - Dialogue pacing is aligned to scenes; no abrupt word cuts or missing lines.
 - Music and sound FX rights recorded; audio ducking, peaks and transitions validated.
-- Captions accurate, synchronized and equal in preview and exported MP4.
+- Manual captions are validated shot-relative for overlap/overrun and can burn from the same SRT into the final MP4 preview. **Automatic** speech-to-word alignment and empirical human accuracy checks remain open.
 - A missing TTS/music service must be clearly indicated, not silently included in a claim of a complete episode.
 
 ### D — Export + reliability
@@ -40,7 +40,7 @@ The existing v0.x is **a prototype**, not a finished Flow alternative. It has ed
 
 ## Release labels
 - **Foundation**: source planning / editors / clip stitching. CURRENT STATUS.
-- **Animatic preview**: **implemented** for approved images with camera moves, narration/music, and standalone MP4/SRT/QA. It is not a generated video model.
+- **Animatic preview**: implemented for approved images with camera moves, optional locally generated voice or user narration/music, manual or estimated SRT, and optional MP4 subtitle burn-in/QA. It is not a diffusion-generated video model.
 - **Generated video beta**: actual model-generated shot clips, rendered audio and captions; model + GPU verified.
 - **Production-ready**: multiple completed representative episodes reviewed for story, visuals, audio and continuity; repeatability proven.
 
