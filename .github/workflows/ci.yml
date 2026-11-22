@@ -1,0 +1,21 @@
+name: Application CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile application
+        run: python -m py_compile app.py
+      - name: Check JavaScript syntax
+        run: node --check web/app.js
+      - name: Confirm FFmpeg
+        run: ffmpeg -version && ffprobe -version
+      - name: Run tests including MP4 assembly
+        run: python -m unittest discover -s tests -v
