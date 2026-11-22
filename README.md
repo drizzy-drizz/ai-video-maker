@@ -7,7 +7,7 @@ A general-purpose Windows-first app: paste a Tagalog or English storyline; build
 ## Status
 
 - Research and implementation blueprint: **documented** (see [docs/RESEARCH_2026-11-23.md](docs/RESEARCH_2026-11-23.md)).
-- Development: incremental; do **not** confuse episode planning, motion-storyboard exports, or image slides with true AI video generation.
+- Working foundation: series/story library; automatic editable episode-and-shot planning; non-destructive **local Qwen AI Director** suggestions; series bible; local ComfyUI video queue; FFmpeg real-clip stitching; preview/download; Linux media regression tests. This is **not** Google Flow quality parity yet.
 - Target platforms: Windows desktop; local network services bound to loopback by default.
 - Existing developer hardware context: Ryzen 5 5600G APU, 16 GB RAM, no discrete GPU. That hardware can plan stories and edit/encode low-resolution video, but modern diffusion-based video generation is not reasonably fast on CPU alone.
 
@@ -23,13 +23,19 @@ Google Flow supports prompt-to-video, start/end frames, reusable visual ingredie
 
 ## Intended local stack
 
-- **Story LLM:** Ollama with Qwen3-4B GGUF (Apache-2.0).
+- **Story LLM:** Ollama with Qwen3-4B (Apache-2.0), used for optional **per-episode cinematic shot suggestions**. The initial episode segmentation is currently deterministic.
 - **Video:** ComfyUI + Wan2.2-TI2V-5B (Apache-2.0; real text/image-to-video if compatible GPU available).
 - **Alternative generation:** HunyuanVideo-1.5 (custom license, >=14 GB VRAM with offload); LTX-2.5 (community license, high VRAM).
 - **Image ingredients:** Z-Image-Turbo, FLUX.1-schnell or Qwen-Image (Apache-2.0).
 - **Speech:** QnVoice Filipino VoxCPM2 GGUF (commercial permission for bundled synthetic reference per author), English Kokoro (Apache-2.0), optional Piper depending on voice license.
 - **Assembly:** FFmpeg/FFprobe local.
 - **App:** local server + desktop shell; no authentication tokens sent to external providers.
+
+## Quick start (Windows)
+
+Clone or download this GitHub repository and double-click `start-windows.bat`. Python 3.12 is recommended; pywebview is optional for a native window (`py -3.12 -m pip install -r requirements-desktop.txt`). Install FFmpeg/FFprobe for actual MP4 export. The editor opens locally at `http://127.0.0.1:8766`. Optional AI Director: run Ollama locally and `ollama pull qwen3:4b`. Optional moving AI footage: run ComfyUI locally with a GPU and an installed real-video model, then import an API-format JSON workflow with `{{PROMPT}}` placeholder. All data saves under your Windows home folder in `AI-Video-Maker`.
+
+A separate [Windows desktop build workflow](.github/workflows/windows-build.yml) packages a portable application folder as a downloadable GitHub Actions artifact; an executable build is not proof of full Windows media/model compatibility. See [setup](docs/WINDOWS_SETUP.md).
 
 ## Implementation priorities
 
