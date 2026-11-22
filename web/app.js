@@ -128,7 +128,10 @@ async function saveSeries(showToast = true) {
   if (!state.series) return;
   flushCaptionEditors();
   const { id, title, genre, format, language, bible, episodes } = state.series;
-  state.series = await api("/api/series/" + id, "PATCH", { title, genre, format, language, bible, episodes });
+  const saved = await api("/api/series/" + id, "PATCH", { title, genre, format, language, bible, episodes });
+  // Keep object identity stable so active trim/caption controls never point to
+  // an orphaned scene object immediately after a Save Changes operation.
+  state.series.updated_at = saved.updated_at;
   state.dirty = false;
   if (showToast) toast("Series and all edited scenes saved locally.");
 }
