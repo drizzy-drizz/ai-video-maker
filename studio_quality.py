@@ -151,6 +151,12 @@ def episode_preflight(series: dict, episode: dict) -> dict:
 
     if not scenes:
         add("blocker", "no_scenes", "Episode has no shots")
+    import caption_engine
+    caption_mode = episode.get("caption_mode") or "sidecar"
+    if caption_mode not in caption_engine.ALLOWED_MODES:
+        add("blocker", "caption_mode_invalid", "Caption mode must be sidecar or burned")
+    elif caption_mode == "burned" and not caption_engine.subtitle_filter_available():
+        add("blocker", "caption_burn_unavailable", "FFmpeg is missing libass subtitles filter for burned MP4 captions")
     if not ((series.get("bible") or {}).get("characters") or []):
         add("advisory", "no_characters", "No recurring character records; identity continuity is not pinned")
     if not str((series.get("bible") or {}).get("style") or "").strip():
@@ -199,6 +205,11 @@ def episode_preflight(series: dict, episode: dict) -> dict:
             continue
         duration = info["duration"]
         clip_durations.append(duration)
+        if scene.get("caption_cues"):
+            try:
+                caption_engine.validate_manual_cues(scene["caption_cues"], duration)
+            except (ValueError, TypeError) as exc:
+                add("blocker", "invalid_caption_timing", str(exc), num)
         if duration < 2.0:
             add("advisory", "very_short", "Moving shot is under 2 seconds", num)
         target_aspect = 9 / 16 if series.get("format") == "9:16" else 16 / 9
