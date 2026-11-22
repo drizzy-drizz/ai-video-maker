@@ -769,6 +769,18 @@ class AppHandler(BaseHTTPRequestHandler):
             dest = DATA / "exports" / project["id"] / stem
             return self.serve_file(dest, "text/plain; charset=utf-8" if parts[4] == "subtitles"
                                    else "application/json; charset=utf-8")
+        if len(parts) == 4 and parts[:2] == ["api", "assets"] and method == "GET":
+            series = read_project(parts[2])
+            asset = asset_library.get_asset(series, parts[3])
+            if not asset:
+                raise FileNotFoundError("Image asset not found")
+            asset_file = Path(asset["path"])
+            quality.validate_image(asset_file)
+            if not asset_library.verify_asset(series, parts[3])["valid"]:
+                raise ValueError("Image asset checksum changed; do not use modified reference")
+            mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                    ".webp": "image/webp"}[asset_file.suffix.lower()]
+            return self.serve_file(asset_file, mime)
         if len(parts) in (4, 5) and parts[:2] == ["api", "animatic"] and method == "GET":
             series = read_project(parts[2])
             episode = pick_episode(series, parts[3])
