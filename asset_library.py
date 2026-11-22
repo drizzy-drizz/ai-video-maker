@@ -7,9 +7,7 @@ No cloud requests, no account, no inference provider.
 from __future__ import annotations
 import hashlib
 import os
-import re
 import shutil
-import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -84,7 +82,8 @@ def resolve_image(series: dict, scene: dict) -> Path | None:
         if not asset:
             raise ValueError("Scene references a missing image library asset: " + chosen_id)
         selected = Path(asset["path"])
-        validate_image(selected)
+        if not verify_asset(series, chosen_id)["valid"]:
+            raise ValueError("Pinned image checksum changed; import a new version instead of modifying approved assets")
         return selected
     # Legacy explicit image path takes precedence over inherited character image.
     path = str(scene.get("reference_image") or "").strip()
@@ -100,7 +99,8 @@ def resolve_image(series: dict, scene: dict) -> Path | None:
             if not asset:
                 raise ValueError("Character references a missing library asset: " + pinned)
             selected = Path(asset["path"])
-            validate_image(selected)
+            if not verify_asset(series, pinned)["valid"]:
+                raise ValueError("Character reference checksum changed; import a new pinned version")
             return selected
         legacy = str(person.get("reference_image") or "").strip()
         if legacy:
