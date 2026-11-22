@@ -7,6 +7,15 @@ Build a **general** (no horror-only presets) **Tagalog + English** episodic face
 
 User hardware: GTX 750 (VRAM detect at runtime; older Maxwell) + Ryzen 5 5600G and 16GB RAM. GTX 750 is not sufficient for modern local Wan2.2 5B diffusion. Story/shot planning, asset management, imported footage and CPU FFmpeg assembly remain possible.
 
+## Newest finished vertical slice — CPU motion storyboard + managed ingredients (2026-11-23)
+
+- asset_library.py: source+rights-confirmed native file upload with checksum, immutable versions, stable asset IDs, source/rights/credit metadata. Old references never update when new images are imported as a replacement.
+- Scene references can be pinned to a managed library image ID; both ComfyUI image handoff and CPU storyboard use the same pinned image. Character Bible can use reference_asset_id.
+- animatic.py: **fully separate** image-based Ken Burns motion storyboard generator with per-scene movement and duration, narration audio with automatic extension to avoid speech cuts, optional license-confirmed looping soundtrack, 9:16/16:9 H.264+A​​AC MP4, estimated captions and technical QA. Never overwrites generated-video footage or scene clip data.
+- Native upload via local HTTP, new Asset Library tab, shot-level image picker and motion controls, separate preview player, downloadable MP4/SRT/QA, image+audio preflight.
+- Tests: versioned assets, HTTP upload/preview, real image-to-motion MP4 with narration/music and postflight. **Consult GitHub Actions for latest pass status**, not static statements.
+- This is **motion storyboard, NOT AI motion generation**. Genuine video diffusion still requires a newer adequate GPU. No high-end generated-episode quality claims.
+
 ## What was actually shipped in latest implementation
 - studio_quality.py: per-scene *relevant cast* + Bible (world, visual style, wardrobe, continuity, locations) canonical textual ComfyUI prompt compilation. Text conditioning does not guarantee visual identity.
 - Per-scene or character-local reference image paths; PNG/JPG/WebP signature and 25MB checks. With a ComfyUI API graph containing **{{REFERENCE_IMAGE}}** (e.g. LoadImage node), file is POSTed via local **/upload/image** and the returned name is inserted into graph. Block when image exists but graph cannot accept it; block when graph requires missing reference. One-image support; no claimed multi-face consistency or actual GTX750 compatibility.
@@ -25,11 +34,11 @@ User hardware: GTX 750 (VRAM detect at runtime; older Maxwell) + Ryzen 5 5600G a
 - [Living master backlog](https://github.com/drizzy-drizz/ai-video-maker/issues/1).
 
 ## NEXT IMPLEMENTATION PRIORITY — not claimed complete
-1. Approved, versioned reference image asset library (not just absolute user paths), stable IDs, linked character look sheets and persistent metadata/licensing. Connect multi-character I2V conditioning when actual workflow supports it; per-shot visual consistency QC remains open.
+1. **Implemented:** Approved immutable reference image library with stable per-version asset IDs, local image picker, rights and hash metadata, and pinned ComfyUI/animatic shots. Multi-character image conditioning and automated visual drift QC remain open.
 2. Story-structure AI planner via local Qwen that suggests episode boundaries/cliffhanger with strict source coverage and human approval. Do NOT silently overwrite existing custom edits/timeline.
 3. TTS adapters with commercial-use verification: English Kokoro, Filipino VoxCPM2/QnVoice, standalone Windows install checks and actual listening tests.
 4. **True speech alignment**; replace estimated SRT with tested forced aligned captions for both Filipino and English, plus burn-in captions matching editor preview. Do not conflate per-scene interpolation with alignment.
-5. Real CPU-only *animatic preview mode*, expressly labelled non-generative motion storyboard; separate from actual moving AI video generation.
+5. **Implemented:** Real CPU-only motion storyboard from approved still images with user narration/music, preview, exports and provenance. Upgrade remaining: optional scene transitions and accurate speech-aligned captions.
 6. Non-destructive editing timeline with trims/transitions/music/SFX, A/V parity. Clip frame and audio QA for production.
 7. Actually generate 2 English + 2 Tagalog coherent episode samples on a modern GPU and human review watchability. No one-shot "Google Flow-quality" claim until visually verified.
 
