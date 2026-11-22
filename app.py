@@ -491,6 +491,9 @@ def has_audio(path: Path) -> bool:
 def render_episode(series_id: str, episode_id: str) -> str:
     project = read_project(series_id)
     episode = pick_episode(project, episode_id)
+    # Guard against jobs publishing an obsolete version after users edit the timeline.
+    saved_edit_snapshot = json.dumps({"episode": episode, "format": project.get("format")},
+                                    sort_keys=True, ensure_ascii=False)
     scenes = episode["scenes"]
     if not scenes:
         raise ValueError("Episode has no scenes")
@@ -563,11 +566,13 @@ def render_episode(series_id: str, episode_id: str) -> str:
         shutil.copy2(assembled, prepared)
     subtitle_path = exports / (episode_id + ".srt")
     qc_path = exports / (episode_id + "-quality.json")
+    staged_captions = work / "timeline-captions.srt"
+    staged_quality = work / "timeline-quality.json"
     subtitle_text, caption_stats = caption_engine.build_srt(
         scenes, durations, timeline=encoded_timeline["entries"])
-    subtitle_path.write_text(subtitle_text, encoding="utf-8-sig")
+    staged_captions.write_text(subtitle_text, encoding="utf-8-sig")
     caption_output = caption_engine.apply_caption_mode(
-        prepared, subtitle_path, staging, episode.get("caption_mode") or "sidecar", height=height)
+        prepared, staged_captions, staging, episode.get("caption_mode") or "sidecar", height=height)
     qc = quality.quality_report_export(staging, encoded_timeline["total_seconds"])
     qc["warnings"] = [item for item in report["findings"] if item["level"] == "advisory"]
     qc.update(caption_stats)
@@ -587,12 +592,21 @@ def render_episode(series_id: str, episode_id: str) -> str:
     }
     if qc["issues"]:
         raise RuntimeError("Export technical QA failed: " + "; ".join(qc["issues"]))
-    qc_path.write_text(json.dumps(qc, ensure_ascii=False, indent=2), encoding="utf-8")
-    # Never overwrite a previously playable episode with an incomplete export.
-    os.replace(staging, target)
+    staged_quality.write_text(json.dumps(qc, ensure_ascii=False, indent=2), encoding="utf-8")
     with LOCK:
         latest = read_project(series_id)
         updated = pick_episode(latest, episode_id)
+        current_snapshot = json.dumps(
+            {"episode": updated, "format": latest.get("format")}, sort_keys=True,
+            ensure_ascii=False)
+        if current_snapshot != saved_edit_snapshot:
+            raise RuntimeError(
+                "Timeline or footage was edited during rendering. "
+                "Previous exported MP4 remains intact; save and render the latest revision again.")
+        # Publish sidecars and encoded footage only after complete technical QA.
+        os.replace(staged_captions, subtitle_path)
+        os.replace(staged_quality, qc_path)
+        os.replace(staging, target)
         updated["render_path"] = str(target)
         updated["captions_path"] = str(subtitle_path)
         updated["quality_report_path"] = str(qc_path)
