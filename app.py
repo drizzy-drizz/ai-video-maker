@@ -20,6 +20,8 @@ import webbrowser
 
 import studio_quality as quality
 import story_planner
+import asset_library
+import animatic
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -117,6 +119,7 @@ def new_series(payload: dict) -> dict:
         "storyline": source, "language": language, "genre": str(payload.get("genre") or "General"),
         "format": payload.get("format") if payload.get("format") in ("9:16", "16:9") else "9:16",
         "episode_word_target": target, "created_at": created, "updated_at": created,
+        "assets": [],
         "planner": "source-preserving narrative-boundary heuristics (optional Qwen direction)", "bible": {
             "world": "", "style": "", "characters": [], "locations": [], "canon": ""
         },
@@ -557,6 +560,23 @@ def render_episode(series_id: str, episode_id: str) -> str:
     return str(target)
 
 
+def render_animatic_episode(series_id: str, episode_id: str) -> str:
+    """Build a fully separate motion storyboard, without editing genuine-video clips."""
+    with LOCK:
+        project = read_project(series_id)
+        episode = copy.deepcopy(pick_episode(project, episode_id))
+    outputs = animatic.render_animatic(project, episode, DATA)
+    with LOCK:
+        current = read_project(series_id)
+        target = pick_episode(current, episode_id)
+        target["animatic_path"] = outputs["video"]
+        target["animatic_captions_path"] = outputs["srt"]
+        target["animatic_quality_path"] = outputs["quality"]
+        target["animatic_mode"] = outputs["mode"]
+        save_project(current)
+    return outputs["video"]
+
+
 class AppHandler(BaseHTTPRequestHandler):
     server_version = "AIVideoMaker/0.1"
 
@@ -648,6 +668,61 @@ class AppHandler(BaseHTTPRequestHandler):
                                 project[key] = payload[key]
                         save_project(project)
                     return self.respond(project)
+            if len(parts) == 4 and parts[3] == "assets" and method == "POST":
+                payload = self.incoming()
+                with LOCK:
+                    project = read_project(project_id)
+                    meta = asset_library.add_image_asset(
+                        DATA, project, str(payload.get("path") or ""),
+                        title=str(payload.get("title") or ""),
+                        rights=str(payload.get("rights") or ""),
+                        credit=str(payload.get("credit") or ""),
+                        replace_asset_id=str(payload.get("replace_asset_id") or ""))
+                    save_project(project)
+                return self.respond(meta, 201)
+            if len(parts) == 4 and parts[3] == "assets-upload" and method == "POST":
+                # Browser-native image selection: raw binary upload, no base64 or remote CDN.
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                val = lambda key: (query.get(key) or [""])[0]
+                ext = Path(val("filename")).suffix.lower()
+                if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
+                    raise ValueError("Choose a PNG, JPEG or WebP image")
+                if self.headers.get("Content-Type", "").split(";")[0] != "application/octet-stream":
+                    raise ValueError("Binary image upload must use application/octet-stream")
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 25 * 1024 * 1024:
+                    raise ValueError("Image must be between 1 byte and 25MB")
+                upload_dir = DATA / "upload-staging"
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=upload_dir, suffix=ext, delete=False) as tmp:
+                    temp_path = Path(tmp.name)
+                    remaining = length
+                    while remaining > 0:
+                        block = self.rfile.read(min(1024 * 1024, remaining))
+                        if not block:
+                            raise ValueError("Incomplete image upload")
+                        tmp.write(block)
+                        remaining -= len(block)
+                try:
+                    with LOCK:
+                        project = read_project(project_id)
+                        meta = asset_library.add_image_asset(
+                            DATA, project, str(temp_path), title=val("title"),
+                            rights=val("rights"), credit=val("credit"),
+                            replace_asset_id=val("replace_asset_id"))
+                        save_project(project)
+                    return self.respond(meta, 201)
+                finally:
+                    temp_path.unlink(missing_ok=True)
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "animatic-preflight" and method == "GET":
+                series = read_project(parts[2])
+                return self.respond(animatic.preflight_animatic(series, pick_episode(series, parts[4])))
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "animatic-render" and method == "POST":
+                project_id, episode_id = parts[2], parts[4]
+                pick_episode(read_project(project_id), episode_id)
+                self.incoming()
+                return self.respond({"job_id": post_job("motion-storyboard", render_animatic_episode,
+                                                        project_id, episode_id)}, 202)
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "preflight" and method == "GET":
                 series = read_project(parts[2])
                 return self.respond(quality.episode_preflight(series, pick_episode(series, parts[4])))
@@ -694,6 +769,19 @@ class AppHandler(BaseHTTPRequestHandler):
             dest = DATA / "exports" / project["id"] / stem
             return self.serve_file(dest, "text/plain; charset=utf-8" if parts[4] == "subtitles"
                                    else "application/json; charset=utf-8")
+        if len(parts) in (4, 5) and parts[:2] == ["api", "animatic"] and method == "GET":
+            series = read_project(parts[2])
+            episode = pick_episode(series, parts[3])
+            if not episode.get("animatic_path"):
+                raise FileNotFoundError("No motion storyboard export found")
+            export_dir = DATA / "exports" / series["id"]
+            if len(parts) == 4:
+                return self.serve_file(export_dir / (episode["id"] + "-animatic.mp4"), "video/mp4")
+            if parts[4] == "subtitles":
+                return self.serve_file(export_dir / (episode["id"] + "-animatic.srt"), "text/plain; charset=utf-8")
+            if parts[4] == "quality":
+                return self.serve_file(export_dir / (episode["id"] + "-animatic-quality.json"), "application/json")
+            raise ValueError("Unknown motion storyboard attachment")
         if method == "GET" and not path.startswith("/api/"):
             static = "index.html" if path == "/" else path.lstrip("/")
             dest = (WEB / static).resolve()
