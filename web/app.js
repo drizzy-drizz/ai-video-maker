@@ -433,6 +433,12 @@ function renderEpisodes() {
       about.textContent = "Current synthetic voice: " + scene.voice_provenance.engine +
         " · " + scene.voice_provenance.duration_seconds + "s · Human listening review required.";
       ttsWrap.appendChild(about);
+      const player = document.createElement("audio");
+      player.controls = true; player.preload = "none";
+      player.src = "/api/series/" + state.series.id + "/episodes/" + episode.id +
+        "/scenes/" + scene.id + "/listen";
+      player.setAttribute("aria-label", "Listen to generated shot narration");
+      ttsWrap.appendChild(player);
     }
     article.appendChild(ttsWrap);
     sceneList.appendChild(article);
