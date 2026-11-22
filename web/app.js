@@ -138,7 +138,7 @@ function renderEpisodes() {
     " scenes · " + escapeHtml(episode.status) + "</p>";
   const titleInput = byId("episodeTitleInput");
   titleInput.style.cssText = "background:transparent;color:var(--text);border:none;border-bottom:1px solid var(--line);width:100%;padding:8px 0;outline:none;font-weight:750";
-  titleInput.oninput = () => { episode.title = titleInput.value; };
+  titleInput.oninput = () => { episode.title = titleInput.value; state.dirty = true; };
   const aiButton = document.createElement("button");
   aiButton.className = "button ghost";
   aiButton.style.marginTop = "10px";
@@ -226,18 +226,19 @@ function renderEpisodes() {
       article.insertBefore(suggestion, controls);
       suggestion.querySelector(".use-suggestion").onclick = () => {
         scene.prompt = scene.ai_suggestion;
+        state.dirty = true;
         article.querySelector(".scene-prompt").value = scene.prompt;
         toast("AI suggestion applied locally. Click Save Changes to keep it.");
       };
     }
     article.querySelector(".scene-script").oninput = (e) => { scene.script = e.target.value; state.dirty = true; };
     article.querySelector(".scene-prompt").oninput = (e) => { scene.prompt = e.target.value; state.dirty = true; };
-    article.querySelector(".scene-negative").oninput = (e) => scene.negative_prompt = e.target.value;
+    article.querySelector(".scene-negative").oninput = (e) => { scene.negative_prompt = e.target.value; state.dirty = true; };
     article.querySelector(".scene-clip").oninput = (e) => { scene.clip = e.target.value; state.dirty = true; };
-    article.querySelector(".scene-narration").oninput = (e) => scene.narration = e.target.value;
-    article.querySelector(".scene-reference").oninput = (e) => scene.reference_image = e.target.value;
-    article.querySelector(".scene-characters").oninput = (e) => scene.character_ids =
-      e.target.value.split(",").map(name => name.trim()).filter(Boolean);
+    article.querySelector(".scene-narration").oninput = (e) => { scene.narration = e.target.value; state.dirty = true; };
+    article.querySelector(".scene-reference").oninput = (e) => { scene.reference_image = e.target.value; state.dirty = true; };
+    article.querySelector(".scene-characters").oninput = (e) => { scene.character_ids =
+      e.target.value.split(",").map(name => name.trim()).filter(Boolean); state.dirty = true; };
     const canonButton = document.createElement("button");
     canonButton.className = "button ghost";
     canonButton.style.marginTop = "10px";
@@ -578,4 +579,7 @@ async function init() {
   setInterval(() => refreshJobs().catch(() => {}), 3500);
   setInterval(() => refreshHealth().catch(() => {}), 18000);
 }
+window.addEventListener("beforeunload", event => {
+  if (state.dirty) { event.preventDefault(); event.returnValue = ""; }
+});
 init().catch((error) => toast(error.message, true));
