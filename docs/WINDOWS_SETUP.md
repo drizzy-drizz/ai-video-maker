@@ -22,6 +22,14 @@ The server binds only to \`127.0.0.1:8766\`.
 6. A completed export is playable and downloadable through the Episode Export viewer. It also produces a scene-proportional SRT file and a machine-readable technical QC JSON report; subtitle words are **not yet speech aligned**.
 7. When Ollama and Qwen are installed, click **AI Direct Episode (Local Qwen)**. Review suggested shot directions individually and apply only the ones you want. This never automatically overwrites manual prompts.
 
+## Voice and caption finishing (new workflow)
+
+- [Narration + Captions installation/configuration](NARRATION_CAPTIONS_2026_11_23.md) documents the optional **Piper** and **VoxCPM2 GGUF** offline engines. You must install a compatible and permitted voice/model externally; the app does NOT auto-download weights and will show missing-engine details.
+- Each shot now has **Generate Local Narration** (explicit license consent), a WAV playback control for generated voices, and a manual-caption editor. Leave manual cues blank to continue using explicitly approximate subtitle timing.
+- For exact manual cues, enter one line per relative time interval, for example: 0.00 --> 1.50 | Magandang gabi. Overlaps and shot overruns are rejected before export.
+- At the episode level select sidecar SRT or **Burn captions into final MP4**. The same cues are used for both the subtitle file and video burn-in. Burn-in requires FFmpeg libass and causes a final re-encode.
+- This is a full editor/export integration, **not** a claim that models are preinstalled or the Filipino/English speech generated on the user's machine has been human-validated.
+
 ## Complete CPU motion-storyboard workflow
 
 This is **an actual video file made by animating existing still images**, not an AI video generator. It runs on CPU with standard FFmpeg; it is intended for concept/episode preview and optional stylized faceless videos.
@@ -51,7 +59,7 @@ New projects preferentially split at paragraph breaks and sentence boundaries ne
 ## NOT implemented yet
 - Advanced AI-chosen episode boundaries, cliffhanger structure and holistic episode writing (Qwen currently suggests per-shot direction and title).
 - Built-in Wan2.2 API JSON template, reference image inputs and image generation.
-- Automatically generated natural Tagalog/English TTS, forced word alignment, licensed music/SFX library and burn-in caption preview parity. User-supplied narration audio and rough sidecar SRT are now supported.
+- Voice generation adapters for locally installed Piper/VoxCPM2 and MP4 burned-caption workflow are now implemented, but **real model performance and listening quality on Windows remain untested**. True forced word-alignment, licensed SFX libraries and full multitrack sound editing are still open.
 - Non-destructive multitrack editor, shot extension, character drift QA and packaging a signed standalone .exe.
 - Native Windows integration tests. GitHub Actions CI exercises source and FFmpeg in Linux; that is not a Windows GPU validation.
 
