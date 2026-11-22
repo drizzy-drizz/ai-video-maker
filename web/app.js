@@ -106,6 +106,21 @@ function renderEpisodes() {
   const titleInput = byId("episodeTitleInput");
   titleInput.style.cssText = "background:transparent;color:var(--text);border:none;border-bottom:1px solid var(--line);width:100%;padding:8px 0;outline:none;font-weight:750";
   titleInput.oninput = () => { episode.title = titleInput.value; };
+  const aiButton = document.createElement("button");
+  aiButton.className = "button ghost";
+  aiButton.style.marginTop = "10px";
+  aiButton.textContent = "AI Direct Episode (Local Qwen)";
+  aiButton.onclick = async () => {
+    try {
+      await saveSeries(false);
+      const queued = await api("/api/series/" + state.series.id + "/episodes/" +
+        episode.id + "/direct", "POST", {});
+      state.jobs[queued.job_id] = "queued";
+      toast("Local AI directing queued. Suggestions won't overwrite your current prompts.");
+      refreshJobs();
+    } catch (error) { toast(error.message, true); }
+  };
+  head.appendChild(aiButton);
   const sceneList = byId("sceneList");
   sceneList.innerHTML = "";
   episode.scenes.forEach((scene) => {
@@ -120,6 +135,21 @@ function renderEpisodes() {
       '<label>Local video file path (.mp4, .webm, .mov, .mkv)<input class="scene-clip" placeholder="C:\\Videos\\episode1-shot1.mp4" value="' + escapeHtml(scene.clip || "") + '"></label>' +
       '<div class="scene-controls"><span class="scene-state">' + (scene.provenance ? "Generated with: " + escapeHtml(scene.provenance.workflow) : "Tip: import a clip or generate via ComfyUI") +
       '</span><button class="button ghost generate-shot">Generate Moving Shot →</button></div>';
+    if (scene.ai_suggestion) {
+      const suggestion = document.createElement("div");
+      suggestion.style.cssText = "background:#1c2d29;border:1px solid #355649;border-radius:9px;padding:12px;margin-top:13px";
+      suggestion.innerHTML = '<div class="eyebrow">LOCAL QWEN SHOT SUGGESTION</div>' +
+        '<p style="font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere">' +
+        escapeHtml(scene.ai_suggestion) + '</p>' +
+        '<button class="button ghost use-suggestion">Apply Suggested Direction</button>';
+      const controls = article.querySelector(".scene-controls");
+      article.insertBefore(suggestion, controls);
+      suggestion.querySelector(".use-suggestion").onclick = () => {
+        scene.prompt = scene.ai_suggestion;
+        article.querySelector(".scene-prompt").value = scene.prompt;
+        toast("AI suggestion applied locally. Click Save Changes to keep it.");
+      };
+    }
     article.querySelector(".scene-script").oninput = (e) => scene.script = e.target.value;
     article.querySelector(".scene-prompt").oninput = (e) => scene.prompt = e.target.value;
     article.querySelector(".scene-negative").oninput = (e) => scene.negative_prompt = e.target.value;
@@ -131,6 +161,7 @@ function renderEpisodes() {
         await saveSeries(false);
         const result = await api("/api/series/" + state.series.id + "/episodes/" +
           episode.id + "/scenes/" + scene.id + "/generate", "POST", { workflow });
+        state.jobs[result.job_id] = "queued";
         toast("Real AI video job queued: " + result.job_id + ". Open ComfyUI to view model execution.");
         refreshJobs();
       } catch (error) { toast(error.message, true); }
@@ -260,6 +291,7 @@ async function init() {
       await saveSeries(false);
       const result = await api("/api/series/" + state.series.id + "/episodes/" +
         state.episodeId + "/render", "POST", {});
+      state.jobs[result.job_id] = "queued";
       toast("Episode rendering queued: " + result.job_id);
       refreshJobs();
     } catch (error) { toast(error.message, true); }
