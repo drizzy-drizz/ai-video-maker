@@ -298,6 +298,28 @@ def install_workflow(name: str, workflow: dict) -> None:
     path.write_text(json.dumps(workflow, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def upload_reference_to_comfy(path: Path) -> str:
+    """Upload user-approved still to local ComfyUI /upload/image (no cloud service)."""
+    quality.validate_image(path)
+    boundary = "AIVM" + uuid.uuid4().hex
+    safe_stem = re.sub(r"[^A-Za-z0-9_-]", "_", path.stem)[:45] or "reference"
+    filename = "ref_" + uuid.uuid4().hex[:10] + "_" + safe_stem + path.suffix.lower()
+    binary = path.read_bytes()
+    prefix = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; "
+              f"filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n").encode("utf-8")
+    suffix = (f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"type\"\r\n\r\n"
+              f"input\r\n--{boundary}--\r\n").encode("utf-8")
+    url = local_url(COMFY + "/upload/image")
+    req = urllib.request.Request(url, data=prefix + binary + suffix, method="POST",
+                                 headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    with urllib.request.urlopen(req, timeout=90) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    name = str(result.get("name") or "")
+    if not name or "/" in name or "\\" in name:
+        raise RuntimeError("ComfyUI reference upload did not return a valid filename")
+    return name
+
+
 def post_job(job_type: str, func, *args) -> str:
     job_id = ident()
     with LOCK:
@@ -326,10 +348,19 @@ def generate_scene(series_id: str, episode_id: str, scene_id: str, workflow_name
     if preflight_gpu.get("video_generation") == "insufficient_for_wan22_5b":
         raise RuntimeError("Local video generation blocked by GPU preflight: " + preflight_gpu["message"])
     canon = quality.compose_canonical_prompt(project, pick_episode(project, episode_id), scene)
+    graph_json = json.dumps(template)
+    image_reference = quality.reference_image_for_scene(project, scene)
+    requires_image = "{{REFERENCE_IMAGE}}" in graph_json
+    if image_reference and not requires_image:
+        raise ValueError("Scene has a reference image but ComfyUI workflow has no {{REFERENCE_IMAGE}} placeholder. Add a LoadImage node to truly condition the model.")
+    if requires_image and not image_reference:
+        raise ValueError("ComfyUI workflow requires {{REFERENCE_IMAGE}}. Assign a scene or recurring-character reference image first.")
+    image_name = upload_reference_to_comfy(image_reference) if requires_image else ""
     graph = interpolate(template, {
         "{{PROMPT}}": canon["prompt"],
         "{{NEGATIVE_PROMPT}}": scene.get("negative_prompt", ""),
-        "{{SEED}}": seed
+        "{{SEED}}": seed,
+        "{{REFERENCE_IMAGE}}": image_name
     })
     result = request_json(COMFY + "/prompt", {"prompt": graph, "client_id": str(uuid.uuid4())}, timeout=30)
     prompt_id = result.get("prompt_id")
@@ -370,7 +401,9 @@ def generate_scene(series_id: str, episode_id: str, scene_id: str, workflow_name
                         target["clip"] = str(destination)
                         target["seed"] = seed
                         target["provenance"] = {"backend": "ComfyUI", "workflow": workflow_name,
-                                                "prompt_id": prompt_id, "seed": seed, "generated_at": now()}
+                                                "prompt_id": prompt_id, "seed": seed,
+                                                "reference_image": str(image_reference) if image_reference else "",
+                                                "generated_at": now()}
                         save_project(updated)
                     return str(destination)
         raise RuntimeError("ComfyUI finished but returned no MP4/WebM/MOV video; use a video-saving node")
