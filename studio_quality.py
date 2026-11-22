@@ -64,6 +64,44 @@ def referenced_characters(series: dict, scene: dict) -> list[dict]:
     return results
 
 
+
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def reference_image_for_scene(series: dict, scene: dict) -> Path | None:
+    """Explicit shot reference wins; otherwise select first referenced character image.
+
+    A single LoadImage reference slot is not a multi-character identity adapter.
+    For multiple faces users must select a composite reference or compatible
+    multiple-reference workflow. Do not silently claim multi-ID conditioning.
+    """
+    explicit = normalized_path(scene.get("reference_image"))
+    if explicit:
+        return explicit
+    for character in referenced_characters(series, scene):
+        selected = normalized_path(character.get("reference_image"))
+        if selected:
+            return selected
+    return None
+
+
+def validate_image(path: Path) -> None:
+    if path.suffix.lower() not in IMAGE_EXTENSIONS:
+        raise ValueError("Reference image must be a PNG, JPEG or WebP file")
+    if not path.is_file():
+        raise ValueError("Reference image does not exist: " + str(path))
+    size = path.stat().st_size
+    if not 0 < size <= 25 * 1024 * 1024:
+        raise ValueError("Reference image must be between 1B and 25MB")
+    with open(path, "rb") as source:
+        first = source.read(16)
+    recognized = (first.startswith(b"\x89PNG\r\n\x1a\n") or
+                  first.startswith(b"\xff\xd8\xff") or
+                  (first[:4] == b"RIFF" and first[8:12] == b"WEBP"))
+    if not recognized:
+        raise ValueError("Reference image has a mismatched/invalid file header")
+
+
 def compose_canonical_prompt(series: dict, episode: dict, scene: dict) -> dict:
     """Generate text-direction with explicit subject/wardrobe canon.
 
@@ -164,6 +202,16 @@ def episode_preflight(series: dict, episode: dict) -> dict:
         words = len(str(scene.get("script") or "").split())
         if words and words / duration > 3.5:
             add("advisory", "too_many_words", f"{words} script words / {duration:.1f}s may be too fast for readable captions or narration", num)
+        reference = reference_image_for_scene(series, scene)
+        if reference:
+            try:
+                validate_image(reference)
+            except (OSError, ValueError) as exc:
+                add("blocker", "reference_invalid", str(exc)[:260], num)
+        cast = referenced_characters(series, scene)
+        if len(cast) > 1 and not normalized_path(scene.get("reference_image")):
+            if any(c.get("reference_image") for c in cast):
+                add("advisory", "multi_cast_reference", "Multiple characters: only the first matching character image can feed a single-reference workflow", num)
         narration = normalized_path(scene.get("narration"))
         if narration:
             if not narration.is_file() or narration.suffix.lower() not in AUDIO_EXTENSIONS:
