@@ -158,6 +158,18 @@ def plan_episode(series: dict, episode: dict) -> dict:
     return result
 
 
+def transition_filters_available() -> bool:
+    """Check actual installed FFmpeg build, not merely the executable name."""
+    try:
+        result = subprocess.run(["ffmpeg", "-hide_banner", "-filters"],
+                                capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    names = {parts[1] for row in result.stdout.splitlines()
+             if len(parts := row.split()) >= 2}
+    return result.returncode == 0 and {"xfade", "acrossfade"}.issubset(names)
+
+
 def concat_cuts(paths: list[Path], dest: Path) -> Path:
     if not paths:
         raise ValueError("No footage to join")
@@ -202,6 +214,8 @@ def assemble_segments(files: list[Path], plan: dict, folder: Path) -> Path:
     left = result_groups[0]
     if not effects:
         return left
+    if not transition_filters_available():
+        raise RuntimeError("Installed FFmpeg must include both xfade and acrossfade filters")
     for index, (edge, right) in enumerate(zip(effects, result_groups[1:])):
         overlap = edge["duration"]
         left_duration = quality.media_info(left)["duration"]
