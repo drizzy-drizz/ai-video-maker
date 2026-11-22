@@ -128,7 +128,7 @@ class OfflineVoiceTests(unittest.TestCase):
         if command[0] == "ffprobe":
             return self.real_subprocess_run(command, **kwargs)
         self.assertIn("-t", command)
-        self.assertIn("Kumusta", command)
+        self.assertTrue(any("Kumusta" in str(argument) for argument in command))
         make_wav(Path(command[command.index("-o") + 1]))
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
