@@ -797,6 +797,19 @@ class AppHandler(BaseHTTPRequestHandler):
                 pick_episode(read_project(project_id), episode_id)
                 return self.respond({"job_id": post_job("render", render_episode, project_id, episode_id)}, 202)
             if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "listen" and method == "GET"):
+                series = read_project(parts[2])
+                shot = pick_scene(pick_episode(series, parts[4]), parts[6])
+                provenance = shot.get("voice_provenance") or {}
+                narration = shot.get("narration") or ""
+                if not narration or narration != provenance.get("wav"):
+                    raise FileNotFoundError("No generated voice attached to this shot")
+                voice_file = Path(narration).resolve()
+                voice_folder = (DATA / "narrations" / series["id"] / parts[4]).resolve()
+                if not voice_file.is_relative_to(voice_folder) or voice_file.suffix.lower() != ".wav":
+                    raise ValueError("Generated voice is outside the managed audio library")
+                return self.serve_file(voice_file, "audio/wav")
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
                     and parts[7] == "voice" and method == "POST"):
                 project_id, episode_id, scene_id = parts[2], parts[4], parts[6]
                 project = read_project(project_id)
