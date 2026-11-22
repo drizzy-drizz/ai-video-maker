@@ -35,10 +35,10 @@ The story planner now weighs **paragraph/scene endings, sentence boundaries and 
 
 ### New completed offline-narration + exact-caption workflow
 
-- **Offline TTS adapters:** Piper ONNX CLI and VoxCPM2 GGUF CLI, with explicit local executable/model checks, per-shot license/voice-reference confirmation, asynchronous WAV generation, media validation and embedded audio listening. Nothing is auto-downloaded, and no paid service is contacted. Exact voice/model inference on the user's GTX 750/Windows remains untested.
+- **Offline TTS adapters:** Piper ONNX CLI and VoxCPM2 GGUF CLI, with local executable/model checks, per-shot license/voice-reference confirmation, generated WAV validation and embedded listening. **One-click Generate Voices For Entire Episode** safely generates missing voices, preserves existing audio, and attaches only after every shot succeeds. Nothing is auto-downloaded; no paid service is contacted. Model quality on the user's GTX 750/Windows remains untested.
 - **Manually timed captions** use seconds relative to each shot. Example: 0.00 --> 1.30 | Hello. Captions are checked for overlap and overrun, and saved in the episode.
 - **Actual MP4 subtitle burn-in:** choose between SRT-only and FFmpeg/libass burned captions for both imported/generated moving footage and CPU motion storyboards. Downloaded SRT and burned MP4 come from the same cue list; final video preview plays the actual rendered pixels. Estimated timings remain clearly marked when no manual cues are supplied.
-- **New tests:** real FFmpeg burned subtitle frames, audio retained in MP4, full real-footage and storyboard MP4 exports with exact manual captions, and local TTS CLI/WAV output contract tests.
+- **New tests:** real FFmpeg burned subtitle frames, audio retained in MP4, full real-footage and storyboard MP4 exports with exact manual captions, local TTS CLI/WAV output contract tests, protected generated WAV playback and episode-wide voice job rollback.
 
 See [Narration + Captions setup](docs/NARRATION_CAPTIONS_2026_11_23.md) for Windows model-path configuration and commercial-rights precautions.
 
