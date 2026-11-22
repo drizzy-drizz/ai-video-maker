@@ -189,6 +189,27 @@ class AnimaticMediaTests(unittest.TestCase):
         self.assertEqual(report["status"], "technical_checks_passed")
         self.assertIn("NOT AI-generated", report["provenance"])
 
+    def test_fully_rendered_motion_storyboard_with_exact_burned_captions(self):
+        import caption_engine
+        if not caption_engine.subtitle_filter_available():
+            self.skipTest("libass subtitles filter not installed")
+        scene = self.episode["scenes"][0]
+        scene["caption_cues"] = [
+            {"start": 0.0, "end": 1.7, "text": "Anna at the beginning"}
+        ]
+        self.episode["caption_mode"] = "burned"
+        app.save_project(self.series)
+        result = Path(app.render_animatic_episode(self.series["id"], self.episode["id"]))
+        self.assertTrue(result.is_file())
+        saved = app.read_project(self.series["id"])["episodes"][0]
+        srt = Path(saved["animatic_captions_path"]).read_text(encoding="utf-8-sig")
+        self.assertIn("Anna at the beginning", srt)
+        qc = json.loads(Path(saved["animatic_quality_path"]).read_text("utf-8"))
+        self.assertEqual(qc["status"], "technical_checks_passed")
+        self.assertEqual(qc["caption_timing_mode"], "manual")
+        self.assertEqual(qc["caption_export"], "burned")
+        self.assertFalse(qc["estimated_subtitle_timing"])
+
     def test_camera_motions_generate_distinct_ffmpeg_filters(self):
         generated = {name: animatic._motion_filter(540, 960, 72, name)
                      for name in animatic.MOTIONS}
