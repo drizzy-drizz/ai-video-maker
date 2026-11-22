@@ -4,9 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - app.py
-      - web/**
-      - .github/workflows/windows-build.yml
+      - '**/*.py'
+      - 'web/**'
+      - '.github/workflows/windows-build.yml'
+concurrency:
+  group: windows-package-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   package:
     runs-on: windows-latest
@@ -19,10 +22,37 @@ jobs:
         run: python -m pip install --upgrade "pyinstaller>=6,<8" "pywebview>=5,<7"
       - name: Check Python source
         run: python -m py_compile app.py
+      - name: Windows runtime smoke test — HTTP, story creation and persistence
+        shell: pwsh
+        run: |
+          $server = Start-Process -FilePath "python" -ArgumentList @("app.py", "--no-browser", "--port", "8878") -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 35; $i++) {
+              Start-Sleep -Milliseconds 400
+              try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:8878/api/health" -TimeoutSec 2
+                if ($health.mode -match "local-only") { $ready = $true; break }
+              } catch {}
+            }
+            if (-not $ready) { throw "The Windows Python desktop engine failed to start" }
+            $created = Invoke-RestMethod -Uri "http://127.0.0.1:8878/api/series" -Method Post -ContentType "application/json" -Body '{"title":"Windows CI Smoke","storyline":"A character travels across the city and returns home with a letter.","language":"en"}'
+            $loaded = Invoke-RestMethod -Uri ("http://127.0.0.1:8878/api/series/" + $created.id)
+            if ($loaded.storyline -ne "A character travels across the city and returns home with a letter.") {
+              throw "Windows story persistence did not preserve source text"
+            }
+            $homepage = Invoke-WebRequest -Uri "http://127.0.0.1:8878/" -TimeoutSec 10
+            if ($homepage.StatusCode -ne 200) { throw "Desktop UI is not available" }
+          } finally {
+            Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          }
       - name: Package native Windows application
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean --onedir --windowed --name "AI-Video-Maker" --add-data "web;web" --collect-all webview app.py
+          if (-not (Test-Path "dist/AI-Video-Maker/AI-Video-Maker.exe")) {
+            throw "Windows executable missing from PyInstaller output"
+          }
       - name: Upload portable desktop folder
         uses: actions/upload-artifact@v4
         with:
