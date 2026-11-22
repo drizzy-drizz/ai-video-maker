@@ -52,6 +52,6 @@ Reviewed 2026-11-23. Primary documentation only. This is a *feature comparison*,
 
 ## Hardware profiles / licensing
 
-Refer to [research dossier](RESEARCH_2026-11-23.md) and [quality gates](QUALITY_GATES_2026_11_23.md). Modern diffusion video models are not suitable for GTX 750. For CPU mode, local planning and clip assembly should remain responsive. An explicitly marked motion animatic is a potential feature but **not implemented or labeled generated video**.
+Refer to [research dossier](RESEARCH_2026-11-23.md) and [quality gates](QUALITY_GATES_2026_11_23.md). Modern diffusion video models are not suitable for GTX 750. For CPU mode, local planning and clip assembly remain possible. A fully separate motion animatic exporter has now been **implemented and tested on CI** from user-owned or licensed still images, with narration, low-volume music, MP4/SRT/technical QA, and explicit non-AI-video provenance.
 
 **Meta/Facebook** monetization requires original/rightsholder-compliant video and may require synthetic media disclosure. Model permissions, training/data provenance, music and external voices must be checked per asset.
