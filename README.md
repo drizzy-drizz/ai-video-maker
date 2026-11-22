@@ -33,6 +33,15 @@ For compatible local image-to-video workflows, **approved scene/character image 
 
 The story planner now weighs **paragraph/scene endings, sentence boundaries and modest turning-point cues** instead of arbitrarily splitting exactly every N words. It records hook/ending excerpts and rough beat-position metadata, verifies every original word remains included, and leaves already-edited existing series untouched. This is a **deterministic heuristic**, not a deep AI evaluation of plot quality; Ollama shot direction remains optional.
 
+### New completed offline-narration + exact-caption workflow
+
+- **Offline TTS adapters:** Piper ONNX CLI and VoxCPM2 GGUF CLI, with explicit local executable/model checks, per-shot license/voice-reference confirmation, asynchronous WAV generation, media validation and embedded audio listening. Nothing is auto-downloaded, and no paid service is contacted. Exact voice/model inference on the user's GTX 750/Windows remains untested.
+- **Manually timed captions** use seconds relative to each shot. Example: 0.00 --> 1.30 | Hello. Captions are checked for overlap and overrun, and saved in the episode.
+- **Actual MP4 subtitle burn-in:** choose between SRT-only and FFmpeg/libass burned captions for both imported/generated moving footage and CPU motion storyboards. Downloaded SRT and burned MP4 come from the same cue list; final video preview plays the actual rendered pixels. Estimated timings remain clearly marked when no manual cues are supplied.
+- **New tests:** real FFmpeg burned subtitle frames, audio retained in MP4, full real-footage and storyboard MP4 exports with exact manual captions, and local TTS CLI/WAV output contract tests.
+
+See [Narration + Captions setup](docs/NARRATION_CAPTIONS_2026_11_23.md) for Windows model-path configuration and commercial-rights precautions.
+
 ### New quality-first implementation
 
 - Scene-specific character, wardrobe, location, world and style text canon is composed into the **actual ComfyUI prompt**. Identity is not guaranteed without reference-image support.
@@ -53,7 +62,7 @@ Google Flow supports prompt-to-video, start/end frames, reusable visual ingredie
 - **Video:** ComfyUI + Wan2.2-TI2V-5B (Apache-2.0; real text/image-to-video if compatible GPU available).
 - **Alternative generation:** HunyuanVideo-1.5 (custom license, >=14 GB VRAM with offload); LTX-2.5 (community license, high VRAM).
 - **Image ingredients:** Z-Image-Turbo, FLUX.1-schnell or Qwen-Image (Apache-2.0).
-- **Speech:** QnVoice Filipino VoxCPM2 GGUF (commercial permission for bundled synthetic reference per author), English Kokoro (Apache-2.0), optional Piper depending on voice license.
+- **Speech (implemented optional adapters):** Piper ONNX and VoxCPM2 GGUF external local CLIs, with recorded usage consent and WAV validation; no model is bundled or auto-installed. QnVoice Filipino GGUF is an optional licensed model; Kokoro remains a planned integration, not a working adapter.
 - **Assembly:** FFmpeg/FFprobe local.
 - **App:** local server + desktop shell; no authentication tokens sent to external providers.
 
@@ -65,7 +74,7 @@ A separate [Windows desktop build workflow](.github/workflows/windows-build.yml)
 
 ## Implementation priorities
 
-1. Persist series, episodes, canon, characters, and shot prompts; never overwrite manually edited canon.
+1. Persist series, episodes, canon, characters, shot prompts and manually timed captions; preserve manually edited canon and prevent voice job staleness.
 2. Plug-in model adapters, local readiness checks, explicit license info and resource profiles.
 3. ComfyUI workflow templates with controlled substitutions, job queue, failure recovery, and clip metadata.
 4. Footage assembly with reliable audio/video timebases and preview/export parity.
