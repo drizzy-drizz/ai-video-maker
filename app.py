@@ -603,9 +603,10 @@ def generate_scene_voice(series_id: str, episode_id: str, scene_id: str,
     with LOCK:
         updated = read_project(series_id)
         target = pick_scene(pick_episode(updated, episode_id), scene_id)
-        if target["script"] != scene["script"]:
+        if (target["script"] != scene["script"] or
+                str(target.get("narration") or "") != str(scene.get("narration") or "")):
             destination.unlink(missing_ok=True)
-            raise RuntimeError("Scene text changed during speech generation; audio not attached. Re-run with the latest script.")
+            raise RuntimeError("Scene text or narration changed during speech generation; audio not attached. Re-run with the latest scene.")
         target["narration"] = str(destination)
         target["voice_provenance"] = result
         save_project(updated)
