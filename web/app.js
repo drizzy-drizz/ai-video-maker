@@ -23,6 +23,54 @@ function toast(message, failed = false) {
   toastTimer = setTimeout(() => box.classList.remove("visible"), 6500);
 }
 
+function toCueLines(cues) {
+  return (cues || []).map(c =>
+    Number(c.start).toFixed(2) + " --> " + Number(c.end).toFixed(2) + " | " +
+    String(c.text || "").replace(/\r?\n/g, " ")).join("\n");
+}
+function parseCueLines(text) {
+  const result = [];
+  let lastEnd = -1;
+  for (const [index, line] of String(text || "").split(/\r?\n/).entries()) {
+    const input = line.trim();
+    if (!input) continue;
+    const m = input.match(/^(\d+(?:\.\d+)?)\s*-->\s*(\d+(?:\.\d+)?)\s*\|\s*(.+)$/);
+    if (!m) throw new Error("Subtitle line " + (index + 1) + ": expected 0.00 --> 1.20 | words");
+    const start = Number(m[1]), end = Number(m[2]), words = m[3].trim();
+    if (!Number.isFinite(start) || !Number.isFinite(end) ||
+        end <= start || start < lastEnd - 0.0005 || end - start < 0.05 ||
+        words.length > 400)
+      throw new Error("Subtitle line " + (index + 1) + ": invalid, overlapping or too long");
+    result.push({ start, end, text: words });
+    lastEnd = end;
+  }
+  if (result.length > 500) throw new Error("Maximum 500 subtitle cues per shot");
+  return result;
+}
+function flushCaptionEditors() {
+  if (!state.series || !state.episodeId) return;
+  const episode = state.series.episodes.find(e => e.id === state.episodeId);
+  if (!episode) return;
+  document.querySelectorAll("textarea[data-caption-sceneid]").forEach(editor => {
+    const shot = episode.scenes.find(c => c.id === editor.dataset.captionSceneid);
+    if (shot) shot.caption_cues = parseCueLines(editor.value);
+  });
+}
+async function refreshVoiceStatus() {
+  if (!state.series) return;
+  const result = await api("/api/voice-options?language=" + encodeURIComponent(state.series.language));
+  const box = byId("voiceStatus");
+  box.replaceChildren();
+  result.backends.forEach(engine => {
+    const line = document.createElement("div");
+    line.className = "job";
+    line.innerHTML = '<strong>' + escapeHtml(engine.name.toUpperCase()) +
+      ' · ' + (engine.available ? "READY" : "NOT CONFIGURED") +
+      '</strong><span>' + escapeHtml(engine.available ? engine.model : engine.reason) + '</span>';
+    box.appendChild(line);
+  });
+}
+
 async function refreshLibrary() {
   state.projects = await api("/api/series");
   const list = byId("seriesList");
@@ -63,6 +111,7 @@ async function loadSeries(id) {
     renderAssets();
     renderEpisodes();
     await refreshLibrary();
+    await refreshVoiceStatus();
   } catch (error) { toast(error.message, true); }
 }
 
@@ -77,6 +126,7 @@ function newProjectView() {
 
 async function saveSeries(showToast = true) {
   if (!state.series) return;
+  flushCaptionEditors();
   const { id, title, genre, format, language, bible, episodes } = state.series;
   state.series = await api("/api/series/" + id, "PATCH", { title, genre, format, language, bible, episodes });
   state.dirty = false;
@@ -123,7 +173,7 @@ function renderEpisodes() {
     button.className = "episode-button" + (state.episodeId === episode.id ? " active" : "");
     button.innerHTML = "<strong>" + escapeHtml(episode.title) + "</strong><small>" +
       episode.scenes.length + " shots · " + escapeHtml(episode.status) + "</small>";
-    button.onclick = () => { state.episodeId = episode.id; renderEpisodes(); };
+    button.onclick = () => { try { flushCaptionEditors(); state.episodeId = episode.id; renderEpisodes(); } catch(e) { toast(e.message, true); } };
     list.appendChild(button);
   });
   const episode = state.series.episodes.find(e => e.id === state.episodeId);
@@ -192,6 +242,20 @@ function renderEpisodes() {
     (episode.soundtrack_rights_confirmed ? " checked" : "") +
     '> I own or have permission to use this soundtrack</label>';
   head.appendChild(music);
+  const captionMode = document.createElement("label");
+  captionMode.className = "caption-mode-select";
+  captionMode.textContent = "Final video subtitle display";
+  const styleSelect = document.createElement("select");
+  [["sidecar", "SRT sidecar only (editable after export)"],
+   ["burned", "Burn the SAME SRT into MP4 (matches actual video preview)"]].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value; option.textContent = label;
+    styleSelect.appendChild(option);
+  });
+  styleSelect.value = episode.caption_mode || "sidecar";
+  styleSelect.onchange = e => { episode.caption_mode = e.target.value; state.dirty = true; };
+  captionMode.appendChild(styleSelect);
+  head.appendChild(captionMode);
   music.querySelector(".storyboard-music-path").oninput = e => {
     episode.soundtrack = e.target.value; state.dirty = true;
   };
@@ -313,6 +377,64 @@ function renderEpisodes() {
     secondsLabel.appendChild(seconds);
     assignment.append(imageLabel, motionLabel, secondsLabel);
     article.appendChild(assignment);
+    const captionWrap = document.createElement("div");
+    captionWrap.className = "manual-captions";
+    const captionLabel = document.createElement("label");
+    captionLabel.textContent = "Optional exact subtitle timings (seconds relative to THIS shot)";
+    const editor = document.createElement("textarea");
+    editor.dataset.captionSceneid = scene.id;
+    editor.rows = 3;
+    editor.placeholder = "0.00 --> 1.40 | Hello there.\n1.40 --> 3.20 | I have a story to tell.";
+    editor.value = toCueLines(scene.caption_cues || []);
+    editor.oninput = () => { state.dirty = true; };
+    captionLabel.appendChild(editor);
+    const guide = document.createElement("p");
+    guide.className = "muted";
+    guide.textContent = "Leave empty for estimated captions. Manual cues must not overlap or exceed the shot duration. Both MP4 burn-in and SRT use these exact values.";
+    captionWrap.append(captionLabel, guide);
+    article.appendChild(captionWrap);
+    const ttsWrap = document.createElement("div");
+    ttsWrap.className = "voice-scene-controls";
+    const ttsSelect = document.createElement("select");
+    [["auto", "Auto: installed local voice"], ["piper", "Piper ONNX voice"],
+     ["voxcpm2", "VoxCPM2 GGUF voice"]].forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value; option.textContent = label;
+      ttsSelect.appendChild(option);
+    });
+    ttsSelect.value = scene.tts_engine || "auto";
+    ttsSelect.onchange = e => { scene.tts_engine = e.target.value; state.dirty = true; };
+    const rights = document.createElement("label");
+    rights.className = "voice-license";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    rights.append(checkbox, document.createTextNode(
+      " I confirm the voice/model allows my intended use and I have rights to any voice reference"));
+    const speak = document.createElement("button");
+    speak.className = "button ghost";
+    speak.textContent = "Generate Local Narration →";
+    speak.onclick = async () => {
+      if (!checkbox.checked) return toast("Confirm the voice/model rights first.", true);
+      try {
+        await saveSeries(false);
+        const result = await api("/api/series/" + state.series.id + "/episodes/" +
+          episode.id + "/scenes/" + scene.id + "/voice", "POST", {
+            engine: ttsSelect.value, rights_confirmed: true
+          });
+        state.jobs[result.job_id] = "queued";
+        toast("Offline narration queued. WAV is attached only if the installed model returns valid audio.");
+        refreshJobs();
+      } catch (error) { toast(error.message, true); }
+    };
+    ttsWrap.append(ttsSelect, rights, speak);
+    if (scene.voice_provenance) {
+      const about = document.createElement("p");
+      about.className = "muted";
+      about.textContent = "Current synthetic voice: " + scene.voice_provenance.engine +
+        " · " + scene.voice_provenance.duration_seconds + "s · Human listening review required.";
+      ttsWrap.appendChild(about);
+    }
+    article.appendChild(ttsWrap);
     sceneList.appendChild(article);
   });
   const motionPreview = byId("animaticPreview");
@@ -324,7 +446,7 @@ function renderEpisodes() {
     links.replaceChildren();
     [
       [prefix, "Download motion storyboard (.mp4)", "storyboard.mp4"],
-      [prefix + "/subtitles", "Download estimated captions (.srt)", "estimated.srt"],
+      [prefix + "/subtitles", "Download editable captions (.srt)", "estimated.srt"],
       [prefix + "/quality", "Technical QA (.json)", "storyboard-QA.json"]
     ].forEach(([href, label, file]) => {
       const a = document.createElement("a");
@@ -336,7 +458,7 @@ function renderEpisodes() {
     });
     const note = document.createElement("p");
     note.className = "muted";
-    note.textContent = "Animated approved stills, not diffusion-generated footage. Captions are scene-duration estimates, not speech aligned.";
+    note.textContent = "Animated approved stills, not diffusion-generated footage. Exact manual cues are honored; remaining captions are estimated. Burned captions are in the MP4 itself.";
     links.appendChild(note);
   }
   const preview = byId("renderPreview");
@@ -359,7 +481,7 @@ function renderEpisodes() {
     caption.className = "button ghost";
     caption.href = url + "/subtitles";
     caption.download = "episode_" + episode.number + "_estimated.srt";
-    caption.textContent = "Download Estimated Captions (.srt)";
+    caption.textContent = "Download Editable Captions (.srt)";
     const report = document.createElement("a");
     report.className = "button ghost";
     report.href = url + "/quality";
@@ -368,7 +490,7 @@ function renderEpisodes() {
     attachments.append(caption, report);
     const note = document.createElement("p");
     note.className = "muted";
-    note.textContent = "Caption timing is proportional to scene length, not speech-aligned. Check subtitles and watch the MP4 before publishing.";
+    note.textContent = "Manually timed cues appear exactly in the SRT and burned MP4 when enabled; remaining scene cues are estimates. Always watch before publishing.";
     attachments.appendChild(note);
   }
 }
