@@ -17,6 +17,7 @@ from pathlib import Path
 
 import asset_library
 import studio_quality as quality
+import caption_engine
 
 MOTIONS = {"zoom_in", "zoom_out", "pan_left", "pan_right", "still"}
 FPS = 24
@@ -128,6 +129,8 @@ def preflight_animatic(series: dict, episode: dict) -> dict:
                 raise ValueError("Scene duration must be finite and at most 60 minutes")
             if scene.get("animatic_motion") and scene["animatic_motion"] not in MOTIONS:
                 raise ValueError("Invalid camera motion")
+            caption_engine.validate_manual_cues(scene.get("caption_cues") or [],
+                                                math.ceil(duration * FPS) / FPS)
             expected += math.ceil(duration * FPS) / FPS
         except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
             issues.append({"scene": i, "message": str(exc)})
@@ -199,18 +202,24 @@ def render_animatic(series: dict, episode: dict, data_root: Path) -> dict:
                 "-c", "copy", "-movflags", "+faststart", str(assembled)])
     final = export_dir / (episode_id + "-animatic.mp4")
     staging = folder / "final-staging.mp4"
+    prepared = folder / "pre-caption.mp4"
     soundtrack = validated_music(episode)
     if soundtrack:
-        apply_soundtrack(assembled, soundtrack, sum(durations), staging)
+        apply_soundtrack(assembled, soundtrack, sum(durations), prepared)
     else:
-        shutil.copy2(assembled, staging)
+        shutil.copy2(assembled, prepared)
     srt = export_dir / (episode_id + "-animatic.srt")
-    srt.write_text(quality.make_subtitles(episode["scenes"], durations), encoding="utf-8-sig")
+    subtitle_text, caption_stats = caption_engine.build_srt(episode["scenes"], durations)
+    srt.write_text(subtitle_text, encoding="utf-8-sig")
+    caption_output = caption_engine.apply_caption_mode(
+        prepared, srt, staging, episode.get("caption_mode") or "sidecar", height=height)
     qa = quality.quality_report_export(staging, sum(durations))
+    qa.update(caption_stats)
+    qa["caption_export"] = caption_output["mode"]
     qa.update({
         "provenance": "FFmpeg motion storyboard built from approved still images — NOT AI-generated moving footage",
         "mode": "animatic",
-        "estimated_subtitle_timing": True,
+        "estimated_subtitle_timing": caption_stats["estimated_cues"] > 0,
         "scene_count": len(clips),
         "music_included": bool(soundtrack),
         "narration_scene_count": sum(bool(scene.get("narration")) for scene in episode["scenes"])
