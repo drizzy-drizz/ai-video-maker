@@ -1,5 +1,5 @@
 "use strict";
-const state = { series: null, projects: [], episodeId: null, workflows: [], jobs: {} };
+const state = { series: null, projects: [], episodeId: null, workflows: [], jobs: {}, dirty: false };
 const byId = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let toastTimer;
@@ -59,6 +59,8 @@ async function loadSeries(id) {
     byId("style").value = state.series.bible.style || "";
     byId("canon").value = state.series.bible.canon || "";
     byId("characters").value = JSON.stringify(state.series.bible.characters || [], null, 2);
+    state.dirty = false;
+    renderAssets();
     renderEpisodes();
     await refreshLibrary();
   } catch (error) { toast(error.message, true); }
@@ -77,7 +79,38 @@ async function saveSeries(showToast = true) {
   if (!state.series) return;
   const { id, title, genre, format, language, bible, episodes } = state.series;
   state.series = await api("/api/series/" + id, "PATCH", { title, genre, format, language, bible, episodes });
+  state.dirty = false;
   if (showToast) toast("Series and all edited scenes saved locally.");
+}
+
+function renderAssets() {
+  const project = state.series;
+  if (!project) return;
+  const list = byId("assetLibraryList");
+  const replace = byId("assetReplace");
+  list.replaceChildren();
+  replace.innerHTML = '<option value="">New ingredient</option>';
+  (project.assets || []).forEach(asset => {
+    const opt = document.createElement("option");
+    opt.value = asset.id;
+    opt.textContent = asset.title + " · v" + asset.version;
+    replace.appendChild(opt);
+    const row = document.createElement("div");
+    row.className = "asset-library-row";
+    const picture = document.createElement("img");
+    picture.src = "/api/assets/" + project.id + "/" + asset.id;
+    picture.alt = asset.title;
+    picture.loading = "lazy";
+    const caption = document.createElement("div");
+    caption.innerHTML = "<strong>" + escapeHtml(asset.title) +
+      " · v" + asset.version + "</strong><small>" + escapeHtml(asset.rights) +
+      " · " + escapeHtml(asset.id) + "</small><p>" + escapeHtml(asset.credit || "No source notes") +
+      "</p><small>SHA256: " + escapeHtml(asset.sha256.slice(0, 16)) +
+      "… · pinned version" + (asset.parent_asset_id ? " (replaces previous asset)" : "") + "</small>";
+    row.append(picture, caption);
+    list.appendChild(row);
+  });
+  if (!(project.assets || []).length) list.innerHTML = '<p class="muted">Import your first original or licensed image above.</p>';
 }
 
 function renderEpisodes() {
@@ -150,6 +183,21 @@ function renderEpisodes() {
   head.appendChild(preflight);
   head.appendChild(reportBox);
   reportBox.hidden = true;
+  const music = document.createElement("div");
+  music.className = "storyboard-music";
+  music.innerHTML = '<label>Optional licensed background music (absolute local path)' +
+    '<input type="text" class="storyboard-music-path" placeholder="C:\\Audio\\instrumental.mp3" value="' +
+    escapeHtml(episode.soundtrack || "") + '"></label>' +
+    '<label class="music-confirm"><input type="checkbox" class="storyboard-music-rights"' +
+    (episode.soundtrack_rights_confirmed ? " checked" : "") +
+    '> I own or have permission to use this soundtrack</label>';
+  head.appendChild(music);
+  music.querySelector(".storyboard-music-path").oninput = e => {
+    episode.soundtrack = e.target.value; state.dirty = true;
+  };
+  music.querySelector(".storyboard-music-rights").onchange = e => {
+    episode.soundtrack_rights_confirmed = e.target.checked; state.dirty = true;
+  };
   const sceneList = byId("sceneList");
   sceneList.innerHTML = "";
   episode.scenes.forEach((scene) => {
@@ -182,10 +230,10 @@ function renderEpisodes() {
         toast("AI suggestion applied locally. Click Save Changes to keep it.");
       };
     }
-    article.querySelector(".scene-script").oninput = (e) => scene.script = e.target.value;
-    article.querySelector(".scene-prompt").oninput = (e) => scene.prompt = e.target.value;
+    article.querySelector(".scene-script").oninput = (e) => { scene.script = e.target.value; state.dirty = true; };
+    article.querySelector(".scene-prompt").oninput = (e) => { scene.prompt = e.target.value; state.dirty = true; };
     article.querySelector(".scene-negative").oninput = (e) => scene.negative_prompt = e.target.value;
-    article.querySelector(".scene-clip").oninput = (e) => scene.clip = e.target.value;
+    article.querySelector(".scene-clip").oninput = (e) => { scene.clip = e.target.value; state.dirty = true; };
     article.querySelector(".scene-narration").oninput = (e) => scene.narration = e.target.value;
     article.querySelector(".scene-reference").oninput = (e) => scene.reference_image = e.target.value;
     article.querySelector(".scene-characters").oninput = (e) => scene.character_ids =
@@ -221,8 +269,75 @@ function renderEpisodes() {
         refreshJobs();
       } catch (error) { toast(error.message, true); }
     };
+    const assignment = document.createElement("div");
+    assignment.className = "asset-scene-controls";
+    const imageLabel = document.createElement("label");
+    imageLabel.textContent = "Pinned library image — applies to AI I2V and CPU motion storyboard";
+    const imageSelector = document.createElement("select");
+    imageSelector.innerHTML = '<option value="">Use legacy scene/character path (if any)</option>';
+    (state.series.assets || []).forEach(asset => {
+      const opt = document.createElement("option");
+      opt.value = asset.id;
+      opt.textContent = asset.title + " · v" + asset.version;
+      imageSelector.appendChild(opt);
+    });
+    imageSelector.value = scene.reference_asset_id || "";
+    imageSelector.onchange = e => {
+      scene.reference_asset_id = e.target.value;
+      state.dirty = true;
+      toast("Reference pinned to this shot. Use Save Changes to persist.");
+    };
+    imageLabel.appendChild(imageSelector);
+    const motionLabel = document.createElement("label");
+    motionLabel.textContent = "CPU storyboard camera motion";
+    const motionSelector = document.createElement("select");
+    ["zoom_in", "zoom_out", "pan_left", "pan_right", "still"].forEach(value => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value.replace("_", " ");
+      motionSelector.appendChild(option);
+    });
+    motionSelector.value = scene.animatic_motion || "zoom_in";
+    motionSelector.onchange = e => { scene.animatic_motion = e.target.value; state.dirty = true; };
+    motionLabel.appendChild(motionSelector);
+    const secondsLabel = document.createElement("label");
+    secondsLabel.textContent = "Storyboarding shot duration (seconds; extends to fit narration)";
+    const seconds = document.createElement("input");
+    seconds.type = "number"; seconds.min = "2"; seconds.max = "3600"; seconds.step = ".1";
+    seconds.value = scene.duration_hint_seconds || 6;
+    seconds.oninput = e => {
+      scene.duration_hint_seconds = Number(e.target.value) || 6;
+      state.dirty = true;
+    };
+    secondsLabel.appendChild(seconds);
+    assignment.append(imageLabel, motionLabel, secondsLabel);
+    article.appendChild(assignment);
     sceneList.appendChild(article);
   });
+  const motionPreview = byId("animaticPreview");
+  motionPreview.hidden = !episode.animatic_path;
+  if (episode.animatic_path) {
+    const prefix = "/api/animatic/" + state.series.id + "/" + episode.id;
+    byId("animaticVideo").src = prefix;
+    const links = byId("animaticAttachments");
+    links.replaceChildren();
+    [
+      [prefix, "Download motion storyboard (.mp4)", "storyboard.mp4"],
+      [prefix + "/subtitles", "Download estimated captions (.srt)", "estimated.srt"],
+      [prefix + "/quality", "Technical QA (.json)", "storyboard-QA.json"]
+    ].forEach(([href, label, file]) => {
+      const a = document.createElement("a");
+      a.className = "button ghost";
+      a.href = href;
+      a.download = "episode_" + episode.number + "_" + file;
+      a.textContent = label;
+      links.appendChild(a);
+    });
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = "Animated approved stills, not diffusion-generated footage. Captions are scene-duration estimates, not speech aligned.";
+    links.appendChild(note);
+  }
   const preview = byId("renderPreview");
   let attachments = byId("episodeAttachments");
   if (!attachments) {
@@ -258,7 +373,7 @@ function renderEpisodes() {
 }
 
 function setupTabs() {
-  const sections = ["episodes", "bible", "source"];
+  const sections = ["episodes", "bible", "assets", "source"];
   document.querySelectorAll(".tab").forEach((button) => {
     button.onclick = () => {
       document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b === button));
@@ -337,7 +452,8 @@ async function refreshJobs() {
       "</strong><span>" + escapeHtml(job.detail || job.id) + "</span>";
     box.appendChild(row);
     if (state.jobs[job.id] && state.jobs[job.id] !== job.status && job.status === "completed" && state.series) {
-      loadSeries(state.series.id);
+      if (state.dirty) { toast("Job complete. Save your pending scene edits before reopening the series."); }
+      else loadSeries(state.series.id);
       toast("Job completed: " + job.type + ". Footage/exports refreshed.");
     }
     if (state.jobs[job.id] && state.jobs[job.id] !== job.status && job.status === "failed") {
@@ -349,6 +465,68 @@ async function refreshJobs() {
 
 async function init() {
   setupTabs();
+  byId("assetForm").onsubmit = async event => {
+    event.preventDefault();
+    if (!state.series) return;
+    const file = byId("assetFile").files[0];
+    const rights = byId("assetRights").value;
+    if (!file || !rights) return toast("Choose an image and confirm your rights.", true);
+    if (file.size > 25 * 1024 * 1024) return toast("Image must be under 25 MB.", true);
+    const button = byId("assetImportButton");
+    button.disabled = true;
+    try {
+      await saveSeries(false);
+      const params = new URLSearchParams({
+        filename: file.name,
+        title: byId("assetTitle").value,
+        rights,
+        credit: byId("assetCredit").value,
+        replace_asset_id: byId("assetReplace").value
+      });
+      const response = await fetch("/api/series/" + state.series.id + "/assets-upload?" +
+        params.toString(), { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Image import failed");
+      byId("assetForm").reset();
+      await loadSeries(state.series.id);
+      document.querySelector('[data-tab="assets"]').click();
+      toast("Approved image v" + result.version + " added. Existing shot assignments remain pinned.");
+    } catch (error) { toast(error.message, true); }
+    finally { button.disabled = false; }
+  };
+  byId("animaticPreflightButton").onclick = async () => {
+    if (!state.series || !state.episodeId) return;
+    try {
+      await saveSeries(false);
+      const report = await api("/api/series/" + state.series.id +
+        "/episodes/" + state.episodeId + "/animatic-preflight");
+      const target = byId("animaticPreflightResult");
+      target.hidden = false;
+      target.innerHTML = "<strong>" + (report.can_render ? "READY FOR CPU MOTION STORYBOARD" :
+        "MISSING IMAGES OR AUDIO — CANNOT RENDER") + "</strong><p>" +
+        escapeHtml(report.duration_estimate_seconds) + "s · " + escapeHtml(report.note) + "</p>" +
+        (report.missing || []).map(f => '<div class="preflight-row fail"><b>' +
+          (f.scene ? "SHOT " + f.scene : "EPISODE") + "</b><span>" +
+          escapeHtml(f.message) + "</span></div>").join("");
+    } catch (error) { toast(error.message, true); }
+  };
+  byId("animaticRenderButton").onclick = async () => {
+    if (!state.series || !state.episodeId) return;
+    try {
+      await saveSeries(false);
+      const report = await api("/api/series/" + state.series.id +
+        "/episodes/" + state.episodeId + "/animatic-preflight");
+      if (!report.can_render) {
+        byId("animaticPreflightButton").click();
+        return toast("Attach an approved image to every scene, then run Check Images.", true);
+      }
+      const result = await api("/api/series/" + state.series.id +
+        "/episodes/" + state.episodeId + "/animatic-render", "POST", {});
+      state.jobs[result.job_id] = "queued";
+      toast("CPU motion storyboard queued. This is image animation, not a diffusion AI video.");
+      refreshJobs();
+    } catch (error) { toast(error.message, true); }
+  };
   byId("newButton").onclick = newProjectView;
   byId("seriesForm").onsubmit = async (event) => {
     event.preventDefault();
