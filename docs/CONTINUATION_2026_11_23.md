@@ -36,10 +36,10 @@ User hardware: GTX 750 (VRAM detect at runtime; older Maxwell) + Ryzen 5 5600G a
 ## Latest production finishing batch — local narration + captions (2026-11-23)
 
 - Added voice_engine.py: optional installed-local Piper ONNX model and VoxCPM2 GGUF CLI adapters, license/right consent, actual validated WAV, versioned project narration and staleness protection.
-- App GET voice-options, POST shot voice, GET local generated voice listen; UI engine readiness, per-shot Generate Local Narration and player; cannot generate fake samples when weights/voice executable are missing.
+- App GET voice-options, POST shot voice, GET managed local voice listen, and POST episode narrate; UI engine readiness, per-shot Generate Local Narration, one-click full-episode batch and audio player. Batch stages voices and commits atomically after checks; existing audio untouched; failed partial batch deleted. CPU voice processes are serialized.
 - Added caption_engine.py: exact manual per-shot timecodes, non-overlap and clip-duration validation, mixed manual/estimated SRT generation, FFmpeg libass MP4 burn-in shared by genuine moving-video and CPU motion storyboard exports.
 - Actual video preview is the final MP4 containing burned subtitle pixels; no separate browser overlay. Export QA reports manual/estimated cue counts and caption output mode. Strict libass readiness check in preflight.
-- Regression includes actual image/video FFmpeg media with burned caption pixels and voice retention, CLI-mocked Piper/VoxCPM2 with valid WAV and full 9:16 storyboard and genuine-footage caption-burn exports.
+- Regression includes actual image/video FFmpeg media with burned caption pixels and voice retention, CLI-mocked Piper/VoxCPM2 with valid WAV, protected HTTP WAV playback, all-or-nothing episode voice batch, preflight caption errors and full 9:16 storyboard/genuine-footage caption-burn exports.
 - Primary gap remains: real Piper/VoxCPM2 model listening validation on the user's Windows hardware, automatic forced word alignment, truly generated video diffusion on compatible GPU, full creative multitrack editor and cinematic QA.
 
 See [setup](NARRATION_CAPTIONS_2026_11_23.md). Check current GitHub Actions status for exact latest test count.
