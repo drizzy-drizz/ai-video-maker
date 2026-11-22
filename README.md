@@ -23,6 +23,10 @@ A general-purpose Windows-first app: paste a Tagalog or English storyline; build
 
 **Current machine note:** GTX 750 GPU (older Maxwell, typically very low VRAM) with Ryzen 5 5600G / 16GB RAM. The app performs a local `nvidia-smi` GPU check and clearly warns for GPU configurations unsuitable for Wan2.2 5B. CPU-side scripting and existing video editing still work; local Wan2.2 generation requires a more capable GPU. Read [Quality Gates](docs/QUALITY_GATES_2026_11_23.md) before calling this production-ready.
 
+### Real image-reference input for ComfyUI
+
+For compatible local image-to-video workflows, **approved scene/character image paths** are now uploaded through ComfyUI's local image API and passed into an explicit {{REFERENCE_IMAGE}} LoadImage placeholder. A missing placeholder **blocks generation** rather than falsely claiming that a reference was applied. Supports PNG/JPEG/WebP, one reference image per basic workflow. This is an actual media handoff but character identity and visual quality still require human review and a compatible GPU. See [Windows reference setup](docs/WINDOWS_SETUP.md).
+
 ### New quality-first implementation
 
 - Scene-specific character, wardrobe, location, world and style text canon is composed into the **actual ComfyUI prompt**. Identity is not guaranteed without reference-image support.
