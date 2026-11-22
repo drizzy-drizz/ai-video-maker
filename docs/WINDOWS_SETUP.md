@@ -36,6 +36,19 @@ The server binds only to \`127.0.0.1:8766\`.
 - Non-destructive multitrack editor, shot extension, character drift QA and packaging a signed standalone .exe.
 - Native Windows integration tests. GitHub Actions CI exercises source and FFmpeg in Linux; that is not a Windows GPU validation.
 
+## Reference images → actual ComfyUI image-to-video
+
+This is the **I2V image handoff**, not a finished visual character consistency scorer. It uses only the local ComfyUI upload API.
+
+1. In **Series Bible**, create recurring cast entries with a name, consistent description and an optional absolute local reference_image path pointing to a PNG/JPG/WebP image. Or put a scene-specific path in the new **Approved character reference image** input.
+2. In ComfyUI, create a genuine image-to-video workflow (with an appropriate *LoadImage* node and the model installed). Export **API-format JSON**. Set the LoadImage filename/input to {{REFERENCE_IMAGE}} and the positive prompt to {{PROMPT}}.
+3. Install the JSON in AI Video Maker and choose **Generate Moving Shot**. The app picks the explicit scene reference first, otherwise the first matching character's image. It checks the image signature/size, uploads it to the **local** ComfyUI /upload/image endpoint, and supplies the resulting actual filename to the workflow graph.
+4. If an image reference is provided but the API workflow lacks {{REFERENCE_IMAGE}}, generation fails loudly instead of pretending the reference was used. If the workflow requires a reference but no image is attached, generation also fails.
+5. The existing GTX 750 preflight still blocks modern local video generation. Use a compatible GPU before testing this pipeline end to end.
+6. Multiple characters require a composite reference or advanced multi-input workflow; the basic implementation only supplies one reference image to the first LoadImage placeholder. Character likeness is **not guaranteed** by either text or reference conditioning.
+
+This does not copy images into project storage or ensure a persistent approved reference asset catalog. Those are separate upcoming features.
+
 ## Portable Windows build
 
 Use GitHub Actions → **Windows desktop build** → download the `AI-Video-Maker-Windows-portable` artifact after a successful run. Extract the entire folder and run `AI-Video-Maker.exe`; do not run just the EXE without its bundled files. The project does not bundle FFmpeg or large Hugging Face model weights. Windows GPU/full render acceptance testing remains pending.
