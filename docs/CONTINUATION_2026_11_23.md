@@ -13,7 +13,7 @@ User hardware: GTX 750 (VRAM detect at runtime; older Maxwell) + Ryzen 5 5600G a
 - Scene references can be pinned to a managed library image ID; both ComfyUI image handoff and CPU storyboard use the same pinned image. Character Bible can use reference_asset_id.
 - animatic.py: **fully separate** image-based Ken Burns motion storyboard generator with per-scene movement and duration, narration audio with automatic extension to avoid speech cuts, optional license-confirmed looping soundtrack, 9:16/16:9 H.264+A​​AC MP4, estimated captions and technical QA. Never overwrites generated-video footage or scene clip data.
 - Native upload via local HTTP, new Asset Library tab, shot-level image picker and motion controls, separate preview player, downloadable MP4/SRT/QA, image+audio preflight.
-- Tests: versioned assets, HTTP upload/preview, real image-to-motion MP4 with narration/music and postflight. **Consult GitHub Actions for latest pass status**, not static statements.
+- Tests: **33 automated tests green**, including HTTP image upload/preview, immutable references, actual FFmpeg image→motion MP4, narration, licensed soundtrack for BOTH real-footage and storyboard exports, caption sidecar, and postflight. Linux CI successful at commit `8556e28a7`. [CI run](https://github.com/drizzy-drizz/ai-video-maker/actions/runs/45060101450).
 - This is **motion storyboard, NOT AI motion generation**. Genuine video diffusion still requires a newer adequate GPU. No high-end generated-episode quality claims.
 
 ## What was actually shipped in latest implementation
@@ -24,7 +24,7 @@ User hardware: GTX 750 (VRAM detect at runtime; older Maxwell) + Ryzen 5 5600G a
 - scene-normalized MP4 export still uses FFmpeg. Sidecars: scene-timed estimated SRT (NOT ASR/forced alignment) and JSON codec/duration postflight. Successful episode status: rendered_needs_human_review.
 - UI: optional audio path, approved reference image path, explicit character names, "Preview Canon-Bound AI Prompt", "Check Episode Quality" with specific warning/blocker rows, subtitle and technical QA download links.
 - story_planner.py: source-preserving narrative boundary heuristics for **new** projects, preferential paragraph/sentence/turning point breaks near episode size, shot-level metadata, hook/ending excerpts, no lost original words. Existing series remain unchanged. Not a semantic plot evaluator and not cinematic AI story selection.
-- New tests for all above: **26 tests green** on GitHub Ubuntu CI at commit **3a3ed88f**, including actual FFmpeg clips and voice mixing. Windows PyInstaller portable build **success** for application code commit **65d7f412**. These are not full local Windows run/GPU generation/visual quality passes.
+- Historical core suite: 26 green. Latest expanded suite: **33 green** at `8556e28a7`. **Windows runtime smoke** now confirms server startup, API story creation/retrieval, and HTTP UI; PyInstaller portable EXE built successfully in [Windows run](https://github.com/drizzy-drizz/ai-video-maker/actions/runs/45060101472). These are still not hardware-level Wan/GTX model tests or human visual-quality reviews.
 
 ## Research
 - [Competitor feature study](COMPETITIVE_RESEARCH_2026_11_23.md): official Google Flow, Runway References, Kling 4.0, and LTX Desktop.
@@ -39,7 +39,7 @@ User hardware: GTX 750 (VRAM detect at runtime; older Maxwell) + Ryzen 5 5600G a
 3. TTS adapters with commercial-use verification: English Kokoro, Filipino VoxCPM2/QnVoice, standalone Windows install checks and actual listening tests.
 4. **True speech alignment**; replace estimated SRT with tested forced aligned captions for both Filipino and English, plus burn-in captions matching editor preview. Do not conflate per-scene interpolation with alignment.
 5. **Implemented:** Real CPU-only motion storyboard from approved still images with user narration/music, preview, exports and provenance. Upgrade remaining: optional scene transitions and accurate speech-aligned captions.
-6. Non-destructive editing timeline with trims/transitions/music/SFX, A/V parity. Clip frame and audio QA for production.
+6. Non-destructive editing timeline with trims/transitions, full music/SFX track controls, A/V parity. **Done in foundation:** optional rights-confirmed soundtrack mix for both actual-moving-video and CPU motion-storyboard exports, serial heavy render lock, atomic QA-passed MP4 replacement, scene narration. Missing: advanced multitrack editor, burn-in captions and speech alignment.
 7. Actually generate 2 English + 2 Tagalog coherent episode samples on a modern GPU and human review watchability. No one-shot "Google Flow-quality" claim until visually verified.
 
 ## Technical gotchas
