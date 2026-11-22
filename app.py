@@ -23,6 +23,7 @@ import story_planner
 import asset_library
 import animatic
 import caption_engine
+import voice_engine
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -585,6 +586,28 @@ def render_episode(series_id: str, episode_id: str) -> str:
     return str(target)
 
 
+def generate_scene_voice(series_id: str, episode_id: str, scene_id: str,
+                         engine: str, rights_confirmed: bool) -> str:
+    """Create one local voice WAV and attach it only if source text still matches."""
+    with LOCK:
+        project = read_project(series_id)
+        scene = copy.deepcopy(pick_scene(pick_episode(project, episode_id), scene_id))
+    directory = DATA / "narrations" / series_id / episode_id
+    destination = directory / (scene_id + "-" + uuid.uuid4().hex[:12] + ".wav")
+    result = voice_engine.generate_wav(scene["script"], project["language"], engine,
+                                       destination, rights_confirmed)
+    with LOCK:
+        updated = read_project(series_id)
+        target = pick_scene(pick_episode(updated, episode_id), scene_id)
+        if target["script"] != scene["script"]:
+            destination.unlink(missing_ok=True)
+            raise RuntimeError("Scene text changed during speech generation; audio not attached. Re-run with the latest script.")
+        target["narration"] = str(destination)
+        target["voice_provenance"] = result
+        save_project(updated)
+    return str(destination)
+
+
 def render_animatic_episode(series_id: str, episode_id: str) -> str:
     """Build a fully separate motion storyboard, without editing genuine-video clips."""
     with LOCK:
@@ -664,6 +687,12 @@ class AppHandler(BaseHTTPRequestHandler):
         path = urllib.parse.urlsplit(self.path).path
         if method == "GET" and path == "/api/health":
             return self.respond(health())
+        if method == "GET" and path == "/api/voice-options":
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            language = (query.get("language") or ["en"])[0].lower()
+            if language not in ("en", "tl"):
+                raise ValueError("Language must be en or tl")
+            return self.respond(voice_engine.voice_options(language))
         if method == "GET" and path == "/api/models":
             return self.respond(MODEL_CATALOG)
         if method == "GET" and path == "/api/jobs":
@@ -767,6 +796,25 @@ class AppHandler(BaseHTTPRequestHandler):
                 project_id, episode_id = parts[2], parts[4]
                 pick_episode(read_project(project_id), episode_id)
                 return self.respond({"job_id": post_job("render", render_episode, project_id, episode_id)}, 202)
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "voice" and method == "POST"):
+                project_id, episode_id, scene_id = parts[2], parts[4], parts[6]
+                project = read_project(project_id)
+                pick_scene(pick_episode(project, episode_id), scene_id)
+                payload = self.incoming()
+                engine = str(payload.get("engine") or "auto")
+                if engine not in ("auto", "piper", "voxcpm2"):
+                    raise ValueError("Select Piper, VoxCPM2 or automatic local voice")
+                if payload.get("rights_confirmed") is not True:
+                    raise ValueError("Confirm voice/model rights before generating synthetic speech")
+                selected = engine if engine != "auto" else voice_engine.voice_options(project["language"])["recommended"]
+                if not selected:
+                    raise ValueError("No installed/offline voice engine for this language")
+                status = voice_engine.configured_backend(project["language"], selected)
+                if not status["available"]:
+                    raise ValueError(selected + " is not configured: " + status["reason"])
+                return self.respond({"job_id": post_job("offline-voice", generate_scene_voice,
+                                     project_id, episode_id, scene_id, selected, True)}, 202)
             if len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes" and parts[7] == "generate" and method == "POST":
                 project_id, episode_id, scene_id = parts[2], parts[4], parts[6]
                 pick_scene(pick_episode(read_project(project_id), episode_id), scene_id)
