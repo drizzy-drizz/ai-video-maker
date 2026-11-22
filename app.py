@@ -17,6 +17,8 @@ import urllib.parse
 import urllib.request
 import uuid
 import webbrowser
+
+import studio_quality as quality
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -320,8 +322,12 @@ def generate_scene(series_id: str, episode_id: str, scene_id: str, workflow_name
         scene = copy.deepcopy(pick_scene(pick_episode(project, episode_id), scene_id))
     template = json.loads(workflow_path(workflow_name).read_text("utf-8"))
     seed = scene.get("seed") if isinstance(scene.get("seed"), int) else int(uuid.uuid4().int % 2_147_483_647)
+    preflight_gpu = gpu_preflight()
+    if preflight_gpu.get("video_generation") == "insufficient_for_wan22_5b":
+        raise RuntimeError("Local video generation blocked by GPU preflight: " + preflight_gpu["message"])
+    canon = quality.compose_canonical_prompt(project, pick_episode(project, episode_id), scene)
     graph = interpolate(template, {
-        "{{PROMPT}}": scene["prompt"],
+        "{{PROMPT}}": canon["prompt"],
         "{{NEGATIVE_PROMPT}}": scene.get("negative_prompt", ""),
         "{{SEED}}": seed
     })
@@ -448,30 +454,51 @@ def render_episode(series_id: str, episode_id: str) -> str:
                          ". Connect ComfyUI or import footage first. No slideshow substitution.")
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         raise RuntimeError("Install FFmpeg and FFprobe and add both to PATH")
+    report = quality.episode_preflight(project, episode)
+    if not report["can_render"]:
+        blockers = [f"scene {issue.get('scene','?')}: {issue['message']}"
+                    for issue in report["findings"] if issue["level"] == "blocker"]
+        raise ValueError("Export blocked by scene preflight: " + "; ".join(blockers))
     width, height = (720, 1280) if project["format"] == "9:16" else (1280, 720)
     work = DATA / "renders" / series_id / episode_id
     work.mkdir(parents=True, exist_ok=True)
     converted = []
+    durations = []
     for i, scene in enumerate(scenes):
         source = Path(scene["clip"]).expanduser().resolve()
         if source.suffix.lower() not in EXTENSIONS:
             raise ValueError("Unsupported footage extension: " + source.suffix)
         dest = work / f"scene-{i:05d}.mp4"
+        source_info = quality.media_info(source)
+        duration = source_info["duration"]
+        narration = quality.normalized_path(scene.get("narration"))
         command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source)]
-        audio_exists = has_audio(source)
-        if not audio_exists:
-            command += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]
-        command += ["-map", "0:v:0", "-map", "0:a:0" if audio_exists else "1:a:0",
-                    "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-                           f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p",
-                    "-c:v", "libx264", "-crf", "21", "-preset", "veryfast",
-                    "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-shortest",
-                    str(dest)]
-        if audio_exists:
-            # Pad short source audio so -shortest is bounded by VIDEO, not early-ending audio.
-            command[-1:-1] = ["-af", "apad"]
+        if narration:
+            command += ["-i", str(narration)]
+        elif not source_info["has_audio"]:
+            command += ["-f", "lavfi", "-i",
+                        "anullsrc=channel_layout=stereo:sample_rate=48000"]
+        video_filter = (f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p")
+        if narration and source_info["has_audio"]:
+            # Mix original ambient audio quietly beneath the supplied human/TTS narration.
+            # Pad both audio tracks so early audio endings never truncate the video.
+            command += ["-filter_complex",
+                        "[0:a:0]volume=0.18,aresample=48000,apad[bg];"
+                        "[1:a:0]aresample=48000,apad[voice];"
+                        "[bg][voice]amix=inputs=2:duration=longest:normalize=0,"
+                        "alimiter=limit=0.95[mix]",
+                        "-map", "0:v:0", "-map", "[mix]"]
+        else:
+            command += ["-map", "0:v:0", "-map",
+                        "1:a:0" if narration or not source_info["has_audio"] else "0:a:0",
+                        "-af", "aresample=48000,apad"]
+        command += ["-vf", video_filter, "-c:v", "libx264", "-crf", "21",
+                    "-preset", "veryfast", "-c:a", "aac", "-b:a", "160k",
+                    "-ar", "48000", "-ac", "2", "-t", f"{duration:.6f}", str(dest)]
         run_command(command)
         converted.append(dest)
+        durations.append(quality.media_info(dest)["duration"])
     manifest = work / "concat.txt"
     manifest.write_text("".join("file '" + p.name + "'\n" for p in converted), encoding="utf-8")
     exports = DATA / "exports" / series_id
@@ -479,11 +506,22 @@ def render_episode(series_id: str, episode_id: str) -> str:
     target = exports / (episode_id + ".mp4")
     run_command(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0",
                  "-i", str(manifest), "-c", "copy", "-movflags", "+faststart", str(target)])
+    subtitle_path = exports / (episode_id + ".srt")
+    subtitle_path.write_text(quality.make_subtitles(scenes, durations), encoding="utf-8-sig")
+    qc = quality.quality_report_export(target, sum(durations))
+    qc["warnings"] = [item for item in report["findings"] if item["level"] == "advisory"]
+    qc["subtitles"] = "approximate (scene text proportional to clip durations); review before posting"
+    qc_path = exports / (episode_id + "-quality.json")
+    qc_path.write_text(json.dumps(qc, ensure_ascii=False, indent=2), encoding="utf-8")
+    if qc["issues"]:
+        raise RuntimeError("Export technical QA failed: " + "; ".join(qc["issues"]))
     with LOCK:
         latest = read_project(series_id)
         updated = pick_episode(latest, episode_id)
         updated["render_path"] = str(target)
-        updated["status"] = "rendered"
+        updated["captions_path"] = str(subtitle_path)
+        updated["quality_report_path"] = str(qc_path)
+        updated["status"] = "rendered_needs_human_review"
         save_project(latest)
     return str(target)
 
@@ -579,6 +617,15 @@ class AppHandler(BaseHTTPRequestHandler):
                                 project[key] = payload[key]
                         save_project(project)
                     return self.respond(project)
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "preflight" and method == "GET":
+                series = read_project(parts[2])
+                return self.respond(quality.episode_preflight(series, pick_episode(series, parts[4])))
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "prompt" and method == "GET"):
+                series = read_project(parts[2])
+                episode = pick_episode(series, parts[4])
+                scene = pick_scene(episode, parts[6])
+                return self.respond(quality.compose_canonical_prompt(series, episode, scene))
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "direct" and method == "POST":
                 project_id, episode_id = parts[2], parts[4]
                 pick_episode(read_project(project_id), episode_id)
@@ -607,6 +654,15 @@ class AppHandler(BaseHTTPRequestHandler):
             episode = pick_episode(project, parts[3])
             dest = DATA / "exports" / project["id"] / (episode["id"] + ".mp4")
             return self.serve_file(dest, "video/mp4")
+        if len(parts) == 5 and parts[:2] == ["api", "export"] and method == "GET":
+            project = read_project(parts[2])
+            episode = pick_episode(project, parts[3])
+            if parts[4] not in ("subtitles", "quality"):
+                raise ValueError("Unsupported export attachment")
+            stem = episode["id"] + (".srt" if parts[4] == "subtitles" else "-quality.json")
+            dest = DATA / "exports" / project["id"] / stem
+            return self.serve_file(dest, "text/plain; charset=utf-8" if parts[4] == "subtitles"
+                                   else "application/json; charset=utf-8")
         if method == "GET" and not path.startswith("/api/"):
             static = "index.html" if path == "/" else path.lstrip("/")
             dest = (WEB / static).resolve()
