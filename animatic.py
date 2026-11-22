@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -74,7 +75,7 @@ def _validated_narration(scene: dict) -> tuple[Path | None, float]:
     return path, info["duration"]
 
 
-def _validated_music(episode: dict) -> Path | None:
+def validated_music(episode: dict) -> Path | None:
     path = quality.normalized_path(episode.get("soundtrack"))
     if not path:
         return None
@@ -86,6 +87,27 @@ def _validated_music(episode: dict) -> Path | None:
     if not episode.get("soundtrack_rights_confirmed"):
         raise ValueError("Confirm you own or have permission to use this music before export")
     return path
+
+
+def apply_soundtrack(assembled: Path, music: Path, duration: float, output: Path) -> None:
+    """Mix a user-licensed looping soundtrack at conservative gain beneath existing audio.
+
+    Shared by BOTH actual moving-video exports and CPU motion storyboards.
+    """
+    if duration <= 0 or not math.isfinite(duration):
+        raise ValueError("Soundtrack duration must be a positive, finite number")
+    fade = min(1.0, duration / 4)
+    fade_start = max(0.0, duration - fade)
+    run_ffmpeg(["-i", str(assembled), "-stream_loop", "-1", "-i", str(music),
+                "-filter_complex",
+                f"[0:a:0]aresample=48000,apad[voice];"
+                f"[1:a:0]aresample=48000,volume=0.12,atrim=duration={duration:.3f},"
+                f"afade=t=out:st={fade_start:.3f}:d={fade:.3f}[music];"
+                "[voice][music]amix=inputs=2:duration=first:normalize=0,"
+                "alimiter=limit=0.95[mixed]",
+                "-map", "0:v:0", "-map", "[mixed]", "-c:v", "copy",
+                "-c:a", "aac", "-b:a", "160k", "-ar", "48000",
+                "-t", f"{duration:.3f}", "-movflags", "+faststart", str(output)])
 
 
 def preflight_animatic(series: dict, episode: dict) -> dict:
@@ -110,7 +132,7 @@ def preflight_animatic(series: dict, episode: dict) -> dict:
         except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
             issues.append({"scene": i, "message": str(exc)})
     try:
-        _validated_music(episode)
+        validated_music(episode)
     except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
         issues.append({"scene": None, "message": str(exc)})
     return {"can_render": not issues, "status": "ready_for_motion_storyboard" if not issues else "blocked",
@@ -176,26 +198,15 @@ def render_animatic(series: dict, episode: dict, data_root: Path) -> dict:
     run_ffmpeg(["-f", "concat", "-safe", "0", "-i", str(manifest),
                 "-c", "copy", "-movflags", "+faststart", str(assembled)])
     final = export_dir / (episode_id + "-animatic.mp4")
-    soundtrack = _validated_music(episode)
+    staging = folder / "final-staging.mp4"
+    soundtrack = validated_music(episode)
     if soundtrack:
-        # Optional music looped beneath the scene narration, with safe low level.
-        duration = sum(durations)
-        tail = max(0, duration - min(1, duration / 4))
-        run_ffmpeg(["-i", str(assembled), "-stream_loop", "-1", "-i", str(soundtrack),
-                    "-filter_complex",
-                    f"[0:a:0]aresample=48000,apad[voice];"
-                    f"[1:a:0]aresample=48000,volume=0.12,atrim=duration={duration:.3f},"
-                    f"afade=t=out:st={tail:.3f}:d={duration-tail:.3f}[music];"
-                    "[voice][music]amix=inputs=2:duration=first:normalize=0,"
-                    "alimiter=limit=0.95[mixed]",
-                    "-map", "0:v:0", "-map", "[mixed]", "-c:v", "copy",
-                    "-c:a", "aac", "-b:a", "160k", "-ar", "48000",
-                    "-t", f"{duration:.3f}", "-movflags", "+faststart", str(final)])
+        apply_soundtrack(assembled, soundtrack, sum(durations), staging)
     else:
-        shutil.copy2(assembled, final)
+        shutil.copy2(assembled, staging)
     srt = export_dir / (episode_id + "-animatic.srt")
     srt.write_text(quality.make_subtitles(episode["scenes"], durations), encoding="utf-8-sig")
-    qa = quality.quality_report_export(final, sum(durations))
+    qa = quality.quality_report_export(staging, sum(durations))
     qa.update({
         "provenance": "FFmpeg motion storyboard built from approved still images — NOT AI-generated moving footage",
         "mode": "animatic",
@@ -208,5 +219,7 @@ def render_animatic(series: dict, episode: dict, data_root: Path) -> dict:
     qa_path.write_text(json.dumps(qa, ensure_ascii=False, indent=2), encoding="utf-8")
     if qa["issues"]:
         raise RuntimeError("Animatic QC failure: " + "; ".join(qa["issues"]))
+    # Replace the published MP4 only after complete codec/audio/duration QA.
+    os.replace(staging, final)
     return {"video": str(final), "srt": str(srt), "quality": str(qa_path),
             "mode": "motion_storyboard_NOT_AI_generated_video"}
