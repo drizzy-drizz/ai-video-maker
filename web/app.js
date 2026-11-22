@@ -121,6 +121,35 @@ function renderEpisodes() {
     } catch (error) { toast(error.message, true); }
   };
   head.appendChild(aiButton);
+  const preflight = document.createElement("button");
+  preflight.className = "button ghost";
+  preflight.style.margin = "10px 0 0 10px";
+  preflight.textContent = "Check Episode Quality";
+  const reportBox = document.createElement("div");
+  reportBox.className = "preflight-report";
+  preflight.onclick = async () => {
+    try {
+      await saveSeries(false);
+      const report = await api("/api/series/" + state.series.id +
+        "/episodes/" + episode.id + "/preflight");
+      reportBox.hidden = false;
+      const items = report.findings.map(item => {
+        const cls = item.level === "blocker" ? "fail" : "warn";
+        return '<div class="preflight-row ' + cls + '"><b>' +
+          escapeHtml(item.level.toUpperCase()) + (item.scene ? " · SHOT " + item.scene : "") +
+          '</b><span>' + escapeHtml(item.message) + "</span></div>";
+      }).join("");
+      reportBox.innerHTML = "<strong>" + (report.can_render ?
+        "TECHNICAL PREFLIGHT READY — HUMAN REVIEW STILL REQUIRED" :
+        "EXPORT BLOCKED UNTIL FIXED") + "</strong><p>" +
+        escapeHtml(report.duration_estimate_seconds) + " seconds estimated · " +
+        escapeHtml(report.timing_note) + "</p>" +
+        (items || '<p>No machine-detectable issues. Watch your final episode to verify quality.</p>');
+    } catch (error) { toast(error.message, true); }
+  };
+  head.appendChild(preflight);
+  head.appendChild(reportBox);
+  reportBox.hidden = true;
   const sceneList = byId("sceneList");
   sceneList.innerHTML = "";
   episode.scenes.forEach((scene) => {
@@ -133,6 +162,8 @@ function renderEpisodes() {
       '<label>Video direction / camera / action<textarea class="scene-prompt" rows="4">' + escapeHtml(scene.prompt) + "</textarea></label>" +
       '<label>Negative prompt<textarea class="scene-negative" rows="2">' + escapeHtml(scene.negative_prompt || "") + "</textarea></label>" +
       '<label>Local video file path (.mp4, .webm, .mov, .mkv)<input class="scene-clip" placeholder="C:\\Videos\\episode1-shot1.mp4" value="' + escapeHtml(scene.clip || "") + '"></label>' +
+      '<label>Optional local narration audio (.wav, .mp3, .m4a, .flac, .ogg)<input class="scene-narration" placeholder="C:\\Voices\\episode1-shot1.wav" value="' + escapeHtml(scene.narration || "") + '"></label>' +
+      '<label>Character names (comma-separated, for canon prompt)<input class="scene-characters" placeholder="Maria, Juan" value="' + escapeHtml((scene.character_ids || []).join(", ")) + '"></label>' +
       '<div class="scene-controls"><span class="scene-state">' + (scene.provenance ? "Generated with: " + escapeHtml(scene.provenance.workflow) : "Tip: import a clip or generate via ComfyUI") +
       '</span><button class="button ghost generate-shot">Generate Moving Shot →</button></div>';
     if (scene.ai_suggestion) {
@@ -154,6 +185,28 @@ function renderEpisodes() {
     article.querySelector(".scene-prompt").oninput = (e) => scene.prompt = e.target.value;
     article.querySelector(".scene-negative").oninput = (e) => scene.negative_prompt = e.target.value;
     article.querySelector(".scene-clip").oninput = (e) => scene.clip = e.target.value;
+    article.querySelector(".scene-narration").oninput = (e) => scene.narration = e.target.value;
+    article.querySelector(".scene-characters").oninput = (e) => scene.character_ids =
+      e.target.value.split(",").map(name => name.trim()).filter(Boolean);
+    const canonButton = document.createElement("button");
+    canonButton.className = "button ghost";
+    canonButton.style.marginTop = "10px";
+    canonButton.textContent = "Preview Canon-Bound AI Prompt";
+    canonButton.onclick = async () => {
+      try {
+        await saveSeries(false);
+        const result = await api("/api/series/" + state.series.id + "/episodes/" +
+          episode.id + "/scenes/" + scene.id + "/prompt");
+        let preview = article.querySelector(".canon-preview");
+        if (!preview) {
+          preview = document.createElement("pre");
+          preview.className = "canon-preview";
+          article.appendChild(preview);
+        }
+        preview.textContent = result.prompt + "\n\n" + result.note;
+      } catch (error) { toast(error.message, true); }
+    };
+    article.appendChild(canonButton);
     article.querySelector(".generate-shot").onclick = async () => {
       const workflow = byId("workflowSelect").value;
       if (!workflow) return toast("Install a ComfyUI API workflow first (see right panel).", true);
@@ -169,6 +222,14 @@ function renderEpisodes() {
     sceneList.appendChild(article);
   });
   const preview = byId("renderPreview");
+  let attachments = byId("episodeAttachments");
+  if (!attachments) {
+    attachments = document.createElement("div");
+    attachments.id = "episodeAttachments";
+    attachments.className = "episode-attachments";
+    preview.appendChild(attachments);
+  }
+  attachments.innerHTML = "";
   preview.hidden = !episode.render_path;
   if (episode.render_path) {
     const url = "/api/export/" + state.series.id + "/" + episode.id;
@@ -176,6 +237,21 @@ function renderEpisodes() {
     byId("downloadVideo").href = url;
     byId("downloadVideo").download = state.series.title.replace(/[^a-z0-9-_]+/gi, "_") +
       "_episode_" + episode.number + ".mp4";
+    const caption = document.createElement("a");
+    caption.className = "button ghost";
+    caption.href = url + "/subtitles";
+    caption.download = "episode_" + episode.number + "_estimated.srt";
+    caption.textContent = "Download Estimated Captions (.srt)";
+    const report = document.createElement("a");
+    report.className = "button ghost";
+    report.href = url + "/quality";
+    report.download = "episode_" + episode.number + "_technical_QA.json";
+    report.textContent = "Technical QA Report";
+    attachments.append(caption, report);
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = "Caption timing is proportional to scene length, not speech-aligned. Check subtitles and watch the MP4 before publishing.";
+    attachments.appendChild(note);
   }
 }
 
