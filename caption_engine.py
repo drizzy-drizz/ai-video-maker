@@ -81,44 +81,64 @@ def cues_as_lines(cues: list[dict]) -> str:
                      f"{str(cue.get('text') or '')}" for cue in cues)
 
 
-def build_srt(scenes: list[dict], durations: list[float]) -> tuple[str, dict]:
-    if len(scenes) != len(durations):
-        raise ValueError("Scene and duration counts differ")
+def build_srt(scenes: list[dict], durations: list[float],
+              timeline: list[dict] | None = None) -> tuple[str, dict]:
+    """Compose matching manual/estimated SRT for hard cuts OR overlapping transitions.
+
+    Timeline entries contain global starts and per-shot reserved caption windows.
+    The overlap midpoint is the subtitle handoff; no simultaneous SRT captions.
+    """
+    if len(scenes) != len(durations) or (timeline is not None and len(timeline) != len(scenes)):
+        raise ValueError("Scene, duration and timeline lengths differ")
     cues = []
     elapsed = 0.0
     manual_count = 0
     estimated_count = 0
-    for scene, duration in zip(scenes, durations):
+    for index, (scene, duration) in enumerate(zip(scenes, durations)):
         duration = _sec(duration, "scene duration")
         if duration <= 0:
             raise ValueError("Caption scene duration must be positive")
+        entry = timeline[index] if timeline is not None else {}
+        offset = float(entry.get("start", elapsed))
+        caption_min = float(entry.get("caption_min", 0.0))
+        caption_max = float(entry.get("caption_max", duration))
         user_cues = scene.get("caption_cues") or []
         if user_cues:
             entries = validate_manual_cues(user_cues, duration)
+            for manual in entries:
+                if (manual["start"] < caption_min - 0.001 or
+                        manual["end"] > caption_max + 0.001):
+                    raise ValueError(
+                        f"Shot {index+1}: manual subtitle extends into a transition; "
+                        "move the timing inside the unoverlapped caption window")
             manual_count += len(entries)
         else:
             text = str(scene.get("script") or "").strip()
-            # Estimate from proportional word count only if manual timings are absent.
             words = text.split()
-            blocks = [" ".join(words[i:i + 7]) for i in range(0, len(words), 7)]
+            blocks = [" ".join(words[i:i+7]) for i in range(0, len(words), 7)]
             entries = []
             if blocks:
                 word_total = len(words)
-                at = 0.0
+                at = caption_min
+                usable = caption_max-caption_min
+                if usable < 0.05:
+                    raise ValueError(f"Shot {index+1}: transition leaves no readable caption interval")
                 for chunk in blocks:
-                    span = duration * len(chunk.split()) / word_total
-                    entries.append({"start": at, "end": at + span, "text": chunk})
+                    span = usable * len(chunk.split()) / word_total
+                    entries.append({"start": at, "end": at+span, "text": chunk})
                     at += span
                 estimated_count += len(entries)
         for cue in entries:
-            start = quality.srt_timestamp(elapsed + cue["start"])
-            end = quality.srt_timestamp(elapsed + min(duration, cue["end"]))
-            cues.append(f"{len(cues) + 1}\n{start} --> {end}\n{cue['text']}\n")
-        elapsed += duration
+            start = quality.srt_timestamp(offset + cue["start"])
+            end = quality.srt_timestamp(offset + min(duration, cue["end"]))
+            cues.append(f"{len(cues)+1}\n{start} --> {end}\n{cue['text']}\n")
+        elapsed = offset + duration
     mode = "manual" if manual_count and not estimated_count else (
         "mixed_manual_and_estimated" if manual_count else "estimated")
     return "\n".join(cues) + ("\n" if cues else ""), {
-        "caption_timing_mode": mode, "manual_cues": manual_count, "estimated_cues": estimated_count
+        "caption_timing_mode": mode, "manual_cues": manual_count,
+        "estimated_cues": estimated_count,
+        "timeline_aware": timeline is not None
     }
 
 
