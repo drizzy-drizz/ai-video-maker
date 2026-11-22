@@ -2,7 +2,14 @@ name: Application CI
 on:
   push:
     branches: [main]
+    paths:
+      - '**/*.py'
+      - 'web/**'
+      - '.github/workflows/ci.yml'
   pull_request:
+concurrency:
+  group: application-ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   tests:
     runs-on: ubuntu-latest
@@ -12,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Compile application
-        run: python -m py_compile app.py
+        run: python -m compileall -q app.py animatic.py asset_library.py studio_quality.py story_planner.py
       - name: Check JavaScript syntax
         run: node --check web/app.js
       - name: Install FFmpeg for media integration test
