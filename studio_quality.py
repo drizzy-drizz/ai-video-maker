@@ -69,20 +69,12 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def reference_image_for_scene(series: dict, scene: dict) -> Path | None:
-    """Explicit shot reference wins; otherwise select first referenced character image.
+    """Use immutable approved asset IDs if assigned, else legacy local-image paths.
 
-    A single LoadImage reference slot is not a multi-character identity adapter.
-    For multiple faces users must select a composite reference or compatible
-    multiple-reference workflow. Do not silently claim multi-ID conditioning.
+    Import locally to avoid an import cycle: asset_library uses validate_image.
     """
-    explicit = normalized_path(scene.get("reference_image"))
-    if explicit:
-        return explicit
-    for character in referenced_characters(series, scene):
-        selected = normalized_path(character.get("reference_image"))
-        if selected:
-            return selected
-    return None
+    from asset_library import resolve_image
+    return resolve_image(series, scene)
 
 
 def validate_image(path: Path) -> None:
