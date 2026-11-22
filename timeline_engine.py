@@ -120,7 +120,7 @@ def plan_episode(series: dict, episode: dict) -> dict:
         trim_start, trim_end = source_window(scene, info["duration"])
         duration = trim_end-trim_start
         entries.append({
-            "scene_id": scene["id"], "number": index, "clip": str(source),
+            "scene_id": scene.get("id") or f"shot-{index}", "number": index, "clip": str(source),
             "source_duration": info["duration"], "source_start": round(trim_start, 6),
             "source_end": round(trim_end, 6),
             "transition_to_next": scene.get("transition_to_next") or "cut",
