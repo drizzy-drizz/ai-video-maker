@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#10151c">
+  <title>AI Video Maker — Story Studio</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-icon">▣</div><div><strong>AI Video Maker</strong><small>Story Studio / Local</small></div></div>
+      <div class="sidebar-head"><span>YOUR SERIES</span><button class="mini-button" id="newButton" title="Create new series">＋</button></div>
+      <div id="seriesList" class="series-list"><div class="muted">No projects yet.</div></div>
+      <div class="sidebar-bottom"><div class="tiny-label">LOCAL WORKSPACE</div><p>Private by default. No paid cloud services. Everything stored on your PC.</p><div id="serverStatus" class="status-pill">Checking...</div></div>
+    </aside>
+
+    <div class="main-shell">
+      <header class="topbar"><div class="breadcrumbs"><span>WORKSPACE</span><span class="chevron">/</span><strong id="breadcrumb">New Series</strong></div><div class="top-actions"><span class="chip">TAGALOG + ENGLISH</span><span class="chip soft">NO PAID API</span></div></header>
+      <main class="main">
+        <section id="createView">
+          <div class="intro"><div class="eyebrow">STORY TO SCREEN · AN EPISODIC WORKSPACE</div><h1>Every story deserves<br><span>its own world.</span></h1><p>Paste your storyline. Build unlimited episodes, direct each scene, and produce actual moving footage with local AI models. Any genre. Your story stays yours.</p></div>
+          <form id="seriesForm" class="editor-panel">
+            <div class="section-header"><div><div class="eyebrow">01 / CREATE PROJECT</div><h2>Start with your story</h2></div><span class="little-mark">NEW SERIES</span></div>
+            <label>Series title<input name="title" placeholder="e.g. The Last Letter / Ang Huling Sulat" maxlength="150"></label>
+            <label>Your storyline<textarea name="storyline" rows="11" minlength="20" required placeholder="Paste the entire story or screenplay here. Plot, dialogue, characters, endings — you are in control. No horror-only presets or forced genre."></textarea></label>
+            <div class="input-grid">
+              <label>Language<select name="language"><option value="tl">Tagalog / Filipino</option><option value="en">English</option></select></label>
+              <label>Genre<input name="genre" placeholder="Any genre" value="General"></label>
+              <label>Output format<select name="format"><option value="9:16">9:16 · Facebook Reels</option><option value="16:9">16:9 · Landscape</option></select></label>
+              <label>Words per episode (target only)<input name="episode_word_target" type="number" value="180" min="30" step="10"></label>
+            </div>
+            <div class="form-footer"><span>Original story is preserved. You can change scenes and episode titles after planning.</span><button type="submit" class="button primary" id="createButton">Build Episodes <span>→</span></button></div>
+          </form>
+        </section>
+
+        <section id="studioView" hidden>
+          <div class="studio-intro"><div><div class="eyebrow">SERIES WORKSPACE</div><h1 id="studioTitle"></h1><p id="studioMeta"></p></div><div class="studio-actions"><button class="button ghost" id="copyScript">Copy Original Story</button><button class="button primary" id="saveSeries">Save Changes</button></div></div>
+          <div class="tabs"><button class="tab active" data-tab="episodes">Episodes + Shots</button><button class="tab" data-tab="bible">Series Bible</button><button class="tab" data-tab="source">Original Story</button></div>
+
+          <section id="episodeTab">
+            <div class="workspace-layout">
+              <div class="episode-rail"><div class="tiny-label">EPISODES <span id="episodeCount"></span></div><div id="episodeList"></div></div>
+              <div class="scene-area">
+                <div id="episodeHeader"></div>
+                <div class="section-header shot-heading"><div><div class="eyebrow">SHOT DIRECTOR</div><h2>Scenes and generated footage</h2></div><span class="hint">Real video, not static slides</span></div>
+                <div id="sceneList"></div>
+                <div class="render-footer"><div><strong>Final episode render</strong><p>Stitches imported/generated moving footage. A missing clip blocks export instead of silently replacing it with slides.</p></div><button id="renderButton" class="button primary">Render Episode →</button></div>
+                <div id="renderPreview" hidden><h3>Episode export</h3><video id="episodeVideo" controls playsinline></video><a id="downloadVideo" class="button ghost" download>Download MP4 ↓</a></div>
+              </div>
+            </div>
+          </section>
+          <section id="bibleTab" hidden><div class="editor-panel"><div class="eyebrow">CONSISTENCY MEMORY</div><h2>Series Bible</h2><p class="muted">Your characters, locations and established canon persist across all episodes. These notes are not overwritten by shot generation.</p><label>World and setting<textarea id="world" rows="3" placeholder="Where and when is this series set?"></textarea></label><label>Visual style<textarea id="style" rows="3" placeholder="Cinematic realism, stylized anime, documentary, painterly..."></textarea></label><label>Canon and continuity rules<textarea id="canon" rows="4" placeholder="History, plot facts, voices, wardrobe, character relationships..."></textarea></label><label>Characters (JSON list; optional for now)<textarea id="characters" rows="6" placeholder='[{"name":"Maria","appearance":"...","voice":"..."}]'></textarea></label><button id="saveBible" class="button primary">Save Canon</button></div></section>
+          <section id="sourceTab" hidden><div class="editor-panel"><div class="eyebrow">UNCHANGED SOURCE</div><h2>Your original storyline</h2><pre id="originalStory"></pre></div></section>
+        </section>
+        <footer class="main-footer">AI Video Maker · Original filmmaking workflows · Local-first, offline-capable editing</footer>
+      </main>
+    </div>
+
+    <aside class="right-sidebar">
+      <div class="right-title"><div class="eyebrow">PRODUCTION DESK</div><h2>Models + Jobs</h2></div>
+      <div class="readiness"><div class="tiny-label">ENGINE READINESS</div><div id="healthCards"></div></div>
+      <div class="right-section"><div class="tiny-label">COMFYUI VIDEO WORKFLOWS</div><p>Export API-format JSON from your local ComfyUI setup. Replace the positive prompt with <code>{{PROMPT}}</code> before importing.</p><label>Workflow name<input id="workflowName" value="wan22_local" placeholder="wan22_local"></label><label>Paste API workflow JSON<textarea id="workflowText" rows="5" placeholder='{"1":{"class_type":"...","inputs":{"text":"{{PROMPT}}"}}}'></textarea></label><button class="button ghost full" id="installWorkflow">Install Workflow</button><select id="workflowSelect" aria-label="Active ComfyUI workflow"></select><p class="tiny-note">Actual moving AI video requires downloaded model weights and a compatible GPU. No credits or paid inference service used.</p></div>
+      <div class="right-section"><div class="tiny-label">MODEL CATALOG <span class="dot"></span></div><div id="modelCatalog"></div></div>
+      <div class="right-section"><div class="tiny-label">BACKGROUND JOBS</div><div id="jobsList"><div class="muted">No jobs.</div></div></div>
+    </aside>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
