@@ -165,7 +165,7 @@ class FFmpegEditorialTests(unittest.TestCase):
         text = Path(updated["captions_path"]).read_text(encoding="utf-8-sig")
         self.assertIn("Found the letter", text)
         self.assertIn("She reads it", text)
-        self.assertIn("00:00:01,400", text)  # Incoming shot begins during overlap.
+        self.assertIn("00:00:01,800", text)  # Incoming manual cue begins 0.4s after 1.4s overlap start.
         self.assertEqual(shot1["clip"], str(self.red))
         self.assertEqual(shot2["clip"], str(self.blue))
 
