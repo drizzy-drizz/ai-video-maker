@@ -30,7 +30,7 @@ This is **an actual video file made by animating existing still images**, not an
 2. Open **Asset Library**; use the native file selector to import PNG/JPEG/WebP pictures (max 25MB per image). Select accurate rights (original, licensed, permission, public domain), and optionally add source credit. The app saves a managed, SHA256-checked copy under your project. Replacing a reference creates **new version**, preserving existing pinned IDs.
 3. Open **Episodes + Shots**, select an episode, and set **Pinned library image** for **each** scene. Optionally assign saved images to characters via reference_asset_id in the Series Bible character JSON for automatic fallback.
 4. Choose zoom in/out, pan left/right, or still movement, and edit shot duration as needed. For existing narration, optionally type a local audio file path into each scene's narration field. The app automatically extends a shot to fit the full audio; it never trims or cuts off spoken lines.
-5. Optional licensed soundtrack: enter its local WAV/MP3/M4A/FLAC/OGG path and **explicitly confirm music rights**.
+5. Optional licensed soundtrack: enter its local WAV/MP3/M4A/FLAC/OGG path and **explicitly confirm music rights**. This soundtrack is mixed at conservative volume in both CPU motion-storyboard and real moving-video episode exports.
 6. Click **Check Images** to validate every scene reference and narration. Click **Render Motion Storyboard**. Progress/failure appears under Background Jobs.
 7. Review the generated video in the separate Motion Storyboard Preview. Download the **MP4, estimated SRT, and technical QA JSON**. The output is separate from genuine ComfyUI-generated moving clips. The original storyline and real-footage edit slots are unchanged.
 8. Important: SRT subtitles are **estimated from text and duration, not speech-aligned**; check the captions manually before posting. A technical QA report checks codec, time and frame dimensions, not emotional storytelling or photorealism.
@@ -67,6 +67,12 @@ This is the **I2V image handoff**, not a finished visual character consistency s
 6. Multiple characters require a composite reference or advanced multi-input workflow; the basic implementation only supplies one reference image to the first LoadImage placeholder. Character likeness is **not guaranteed** by either text or reference conditioning.
 
 This does not copy images into project storage or ensure a persistent approved reference asset catalog. Those are separate upcoming features.
+
+## Verified CI status (2026-11-23)
+
+- [Linux media and API CI — 33 tests passed](https://github.com/drizzy-drizz/ai-video-maker/actions/runs/45060101450)
+- [Windows Python runtime, UI/story-save smoke test and portable app packaging passed](https://github.com/drizzy-drizz/ai-video-maker/actions/runs/45060101472)
+- These tests DO NOT validate a real AI diffusion model on the GTX 750, a native double-click GUI session on the user's PC, full quality of Tagalog/English TTS, or any advanced edited film output.
 
 ## Portable Windows build
 
