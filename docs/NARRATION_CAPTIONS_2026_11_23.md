@@ -43,8 +43,8 @@ Official CLI example: https://github.com/OpenBMB/VoxCPM (on-device inference)
 
 1. Paste/create a Tagalog or English series and open Episodes + Shots.
 2. Sidebar OFFLINE VOICE STATUS shows which local engines/models are present and exactly why a candidate is missing.
-3. In each scene choose Auto, Piper or VoxCPM2, confirm voice/model/reference usage rights, and click Generate Local Narration.
-4. Review the resulting WAV via the scene audio player; reject, revise, or use your own recorded voice if needed.
+3. For a single scene choose Auto, Piper or VoxCPM2, confirm voice/model/reference usage rights, and click Generate Local Narration. **Alternatively, Generate Voices For Entire Episode** in the episode header produces every missing narration under one license-confirmed local job.
+4. Review the resulting WAV via the scene audio player; reject, revise, or use your own recorded voice if needed. Episode-wide jobs preserve already existing valid narration and only attach the new WAVs if **every** missing shot passes; failure rolls back all staged new WAVs.
 5. CPU image-motion storyboard extends the scene to fit voice duration. Actual moving-video export blocks too-long narration to avoid cutting words off.
 
 ## Exact manual subtitle timing
