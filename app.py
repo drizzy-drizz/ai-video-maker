@@ -19,6 +19,7 @@ import uuid
 import webbrowser
 
 import studio_quality as quality
+import story_planner
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -86,31 +87,28 @@ def new_series(payload: dict) -> dict:
     if target < 30:
         raise ValueError("Episode word target must be at least 30.")
     language = normalize_language(payload.get("language", "en"))
-    # ~160 spoken words/minute: target scene beats of 5–9s, rather than 40-word static shots.
-    shots = shot_chunks(source, max(10, min(22, target // 9)))
-    episodes, group, words = [], [], 0
-    for shot in shots:
-        n = len(shot.split())
-        if group and words + n > target:
-            episodes.append(group)
-            group, words = [], 0
-        group.append(shot)
-        words += n
-    if group:
-        episodes.append(group)
+    # Weight natural scene boundaries and preserve *every original word*.
+    # Existing projects are never re-planned behind the user's back.
+    episodes = story_planner.plan_story(source, target)
     planned = []
-    for index, parts in enumerate(episodes, 1):
+    for episode in episodes:
+        index = episode["number"]
         scenes = []
-        for number, excerpt in enumerate(parts, 1):
+        for number, excerpt in enumerate(episode["scenes"], 1):
             scenes.append({
                 "id": ident(), "number": number, "script": excerpt,
                 "prompt": "Cinematic, coherent moving shot. Visualize this moment faithfully: " + excerpt,
                 "negative_prompt": "flicker, character drift, distorted face, text artifacts",
-                "duration_hint_seconds": round(max(3.0, len(excerpt.split()) / 2.6), 1), "seed": None, "clip": "", "reference_ids": []
+                "duration_hint_seconds": round(max(3.0, len(excerpt.split()) / 2.6), 1),
+                "seed": None, "clip": "", "reference_ids": [],
+                "beat_position": ("opening" if number == 1 else
+                                  "ending" if number == len(episode["scenes"]) else "development")
             })
         planned.append({
             "id": ident(), "number": index, "title": f"Episode {index}",
-            "summary": " ".join(parts)[:360], "status": "planned", "scenes": scenes,
+            "summary": " ".join(episode["scenes"])[:360], "status": "planned", "scenes": scenes,
+            "hook_excerpt": episode["hook_excerpt"], "ending_excerpt": episode["ending_excerpt"],
+            "word_count": episode["words"], "boundary_reason": episode["boundary_reason"],
             "continuity_notes": "", "render_path": ""
         })
     created = now()
@@ -119,7 +117,7 @@ def new_series(payload: dict) -> dict:
         "storyline": source, "language": language, "genre": str(payload.get("genre") or "General"),
         "format": payload.get("format") if payload.get("format") in ("9:16", "16:9") else "9:16",
         "episode_word_target": target, "created_at": created, "updated_at": created,
-        "planner": "deterministic (AI script polish optional)", "bible": {
+        "planner": "source-preserving narrative-boundary heuristics (optional Qwen direction)", "bible": {
             "world": "", "style": "", "characters": [], "locations": [], "canon": ""
         },
         "episodes": planned
