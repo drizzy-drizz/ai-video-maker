@@ -218,12 +218,12 @@ def episode_preflight(series: dict, episode: dict) -> dict:
         words = len(str(scene.get("script") or "").split())
         if words and words / duration > 3.5:
             add("advisory", "too_many_words", f"{words} script words / {duration:.1f}s may be too fast for readable captions or narration", num)
-        reference = reference_image_for_scene(series, scene)
-        if reference:
-            try:
+        try:
+            reference = reference_image_for_scene(series, scene)
+            if reference:
                 validate_image(reference)
-            except (OSError, ValueError) as exc:
-                add("blocker", "reference_invalid", str(exc)[:260], num)
+        except (OSError, ValueError) as exc:
+            add("blocker", "reference_invalid", str(exc)[:260], num)
         cast = referenced_characters(series, scene)
         if len(cast) > 1 and not normalized_path(scene.get("reference_image")):
             if any(c.get("reference_image") for c in cast):
@@ -242,12 +242,28 @@ def episode_preflight(series: dict, episode: dict) -> dict:
                             f"Voice is {voice['duration']:.2f}s but video is {duration:.2f}s. Extend or replace clip; narration will NOT be truncated.", num)
                 except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
                     add("blocker", "unreadable_narration", str(exc)[:260], num)
+    timeline = None
+    if scenes:
+        import timeline_engine
+        try:
+            timeline = timeline_engine.plan_episode(series, episode)
+        except (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired) as exc:
+            add("blocker", "invalid_edit_timeline", str(exc)[:320])
     return {
         "status": "blocked" if any(f["level"] == "blocker" for f in findings) else "ready_for_assembly",
         "can_render": not any(f["level"] == "blocker" for f in findings),
         "findings": findings, "scene_count": len(scenes),
-        "duration_estimate_seconds": round(sum(clip_durations), 2),
-        "timing_note": "Subtitles are estimated from script+video lengths; there is no speech-to-word forced alignment."
+        "duration_estimate_seconds": (timeline["total_seconds"] if timeline
+                                      else round(sum(clip_durations), 2)),
+        "timeline": ({
+            "crossfades": timeline["crossfades"],
+            "boundaries": timeline["boundaries"],
+            "entries": [{
+                "scene_id": x["scene_id"], "source_start": x["source_start"],
+                "source_end": x["source_end"], "start": x["start"], "end": x["end"]
+            } for x in timeline["entries"]]
+        } if timeline else None),
+        "timing_note": "Manual captions are shot-relative; otherwise SRT estimates are distributed across edited shots. No automatic speech alignment."
     }
 
 
