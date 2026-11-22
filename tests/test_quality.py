@@ -103,6 +103,23 @@ class CanonTests(unittest.TestCase):
                 self.assertIn(b"image-fixture", sent_request.data)
                 self.assertIn("/upload/image", sent_request.full_url)
 
+    def test_quality_preflight_blocks_manual_caption_overrun(self):
+        with tempfile.TemporaryDirectory() as folder:
+            footage = Path(folder) / "existing.mp4"
+            footage.write_bytes(b"placeholder")
+            series = {"format": "9:16", "bible": {"characters": [], "style": "", "canon": ""}}
+            episode = {"caption_mode": "sidecar", "scenes": [{
+                "number": 1, "clip": str(footage), "script": "Hello",
+                "caption_cues": [{"start": 0, "end": 4, "text": "past the clip"}]
+            }]}
+            with patch("studio_quality.media_info", return_value={
+                "duration": 2.0, "has_video": True, "has_audio": False,
+                "width": 720, "height": 1280
+            }):
+                report = quality.episode_preflight(series, episode)
+            self.assertFalse(report["can_render"])
+            self.assertIn("invalid_caption_timing", [f["code"] for f in report["findings"]])
+
     def test_technical_qc_detects_duration_mismatch(self):
         with patch("studio_quality.media_info", return_value={
             "duration": 5, "has_video": True, "has_audio": True,
