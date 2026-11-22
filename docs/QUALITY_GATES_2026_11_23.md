@@ -8,7 +8,7 @@ The existing v0.x is **a prototype**, not a finished Flow alternative. It has ed
 - Ryzen 5 5600G, 16GB system RAM (previously reported).
 - **Do not automatically install or queue Wan2.2, Hunyuan, LTX or other modern high-memory diffusion models on this GPU**; model memory needs are dramatically higher. GPU detection via `nvidia-smi` is now shown in the app; unknown GPUs must be labelled unverified.
 - With the GTX 750, use CPU-based story work and local editing. Real generated motion requires a compatible, adequately resourced GPU in a later setup; free Hugging Face weights alone do not include GPU compute.
-- For CPU-friendly experiment mode, allow user-provided/reference footage, storyboard illustrations and lightweight FFmpeg moves, but **label this "animatic"/"motion storyboard"**, never pass it off as diffusion-generated video. This mode is not yet built.
+- **CPU motion storyboard is now implemented and tested**: approved still image versions, Ken Burns camera moves, optional supplied narration and licensed music, MP4/SRT/technical QA. It is expressly labelled a motion storyboard, NOT diffusion-generated video. Real video generation on the GTX 750 remains infeasible.
 
 ## Before calling a release "video making app ready"
 ### A — Story coherence
@@ -40,7 +40,7 @@ The existing v0.x is **a prototype**, not a finished Flow alternative. It has ed
 
 ## Release labels
 - **Foundation**: source planning / editors / clip stitching. CURRENT STATUS.
-- **Animatic preview**: motion storyboard with still assets and licensed narrations, clearly labelled.
+- **Animatic preview**: **implemented** for approved images with camera moves, narration/music, and standalone MP4/SRT/QA. It is not a generated video model.
 - **Generated video beta**: actual model-generated shot clips, rendered audio and captions; model + GPU verified.
 - **Production-ready**: multiple completed representative episodes reviewed for story, visuals, audio and continuity; repeatability proven.
 
