@@ -82,6 +82,33 @@ class SeriesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             app.local_url("https://paid-inference.example/api")
 
+    def test_gpu_preflight_gtx750_is_not_video_ready(self):
+        from unittest.mock import Mock
+        result = Mock(returncode=0, stdout="GeForce GTX 750, 1024, 5.0\n")
+        with patch("app.shutil.which", return_value="nvidia-smi"), patch(
+            "app.subprocess.run", return_value=result
+        ):
+            gpu = app.gpu_preflight()
+        self.assertTrue(gpu["detected"])
+        self.assertEqual(gpu["video_generation"], "insufficient_for_wan22_5b")
+        self.assertEqual(gpu["compute_capability"], "5.0")
+        self.assertAlmostEqual(gpu["vram_gb"], 1.0)
+
+    def test_gpu_preflight_no_nvidia_smi_is_unknown_not_success(self):
+        with patch("app.shutil.which", return_value=None):
+            gpu = app.gpu_preflight()
+        self.assertFalse(gpu["detected"])
+        self.assertEqual(gpu["video_generation"], "unverified")
+
+    def test_gpu_preflight_stronger_card_still_unverified(self):
+        from unittest.mock import Mock
+        result = Mock(returncode=0, stdout="RTX GPU, 12288, 8.6\n")
+        with patch("app.shutil.which", return_value="nvidia-smi"), patch(
+            "app.subprocess.run", return_value=result
+        ):
+            gpu = app.gpu_preflight()
+        self.assertEqual(gpu["video_generation"], "not_validated")
+
     def test_ffmpeg_real_video_render(self):
         if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
             self.skipTest("FFmpeg missing on test runner")
