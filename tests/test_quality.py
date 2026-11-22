@@ -170,6 +170,30 @@ class ActualFFmpegTests(unittest.TestCase):
             app.render_episode(series["id"], episode["id"])
         self.assertEqual(result.read_bytes(), original_bytes)
 
+    def test_real_footage_end_to_end_with_manual_burned_subtitles(self):
+        import caption_engine
+        if not caption_engine.subtitle_filter_available():
+            self.skipTest("FFmpeg libass subtitle renderer unavailable")
+        video, voice = self.fixture(video_duration=2.35, voice_duration=1.1)
+        project = app.new_series({"storyline": "A character returns to the city and finds a letter."})
+        episode = project["episodes"][0]
+        scene = episode["scenes"][0]
+        episode["caption_mode"] = "burned"
+        scene["clip"], scene["narration"] = str(video), str(voice)
+        scene["caption_cues"] = [{"start": 0.0, "end": 1.8,
+                                   "text": "A character returns to the city"}]
+        app.save_project(project)
+        exported = Path(app.render_episode(project["id"], episode["id"]))
+        self.assertTrue(exported.is_file())
+        saved = app.read_project(project["id"])["episodes"][0]
+        meta = json.loads(Path(saved["quality_report_path"]).read_text())
+        self.assertEqual(meta["caption_export"], "burned")
+        self.assertEqual(meta["caption_timing_mode"], "manual")
+        self.assertEqual(meta["status"], "technical_checks_passed")
+        self.assertTrue(quality.media_info(exported)["has_audio"])
+        srt = Path(saved["captions_path"]).read_text(encoding="utf-8-sig")
+        self.assertIn("A character returns to the city", srt)
+
     def test_voice_longer_than_clip_is_blocked_not_cut_off(self):
         video, voice = self.fixture(video_duration=1.4, voice_duration=2.5)
         series = app.new_series({"storyline": "Maria traveled home to meet friends."})
