@@ -219,12 +219,16 @@ def assemble_segments(files: list[Path], plan: dict, folder: Path) -> Path:
         af = (f"[0:a:0]aresample=48000,asetpts=PTS-STARTPTS[a0];"
               f"[1:a:0]aresample=48000,asetpts=PTS-STARTPTS[a1];"
               f"[a0][a1]acrossfade=d={overlap:.6f}:c1=tri:c2=tri[a]")
+        expected = left_duration + right_duration - overlap
         run_ffmpeg(["-i", str(left), "-i", str(right),
+                    "-filter_complex_threads", "2",
                     "-filter_complex", vf + ";" + af,
                     "-map", "[v]", "-map", "[a]",
                     "-c:v", "libx264", "-crf", "21", "-preset", "veryfast",
                     "-pix_fmt", "yuv420p", "-r", "24",
                     "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
+                    # Bound output even if a filter delays EOF or retains padded audio.
+                    "-t", f"{expected:.6f}",
                     "-movflags", "+faststart", str(dest)])
         left = dest
     return left
