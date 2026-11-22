@@ -163,6 +163,7 @@ function renderEpisodes() {
       '<label>Negative prompt<textarea class="scene-negative" rows="2">' + escapeHtml(scene.negative_prompt || "") + "</textarea></label>" +
       '<label>Local video file path (.mp4, .webm, .mov, .mkv)<input class="scene-clip" placeholder="C:\\Videos\\episode1-shot1.mp4" value="' + escapeHtml(scene.clip || "") + '"></label>' +
       '<label>Optional local narration audio (.wav, .mp3, .m4a, .flac, .ogg)<input class="scene-narration" placeholder="C:\\Voices\\episode1-shot1.wav" value="' + escapeHtml(scene.narration || "") + '"></label>' +
+      '<label>Optional approved character reference image (.png, .jpg, .webp)<input class="scene-reference" placeholder="C:\\Images\\maria_reference.png" value="' + escapeHtml(scene.reference_image || "") + '"></label>' +
       '<label>Character names (comma-separated, for canon prompt)<input class="scene-characters" placeholder="Maria, Juan" value="' + escapeHtml((scene.character_ids || []).join(", ")) + '"></label>' +
       '<div class="scene-controls"><span class="scene-state">' + (scene.provenance ? "Generated with: " + escapeHtml(scene.provenance.workflow) : "Tip: import a clip or generate via ComfyUI") +
       '</span><button class="button ghost generate-shot">Generate Moving Shot →</button></div>';
@@ -186,6 +187,7 @@ function renderEpisodes() {
     article.querySelector(".scene-negative").oninput = (e) => scene.negative_prompt = e.target.value;
     article.querySelector(".scene-clip").oninput = (e) => scene.clip = e.target.value;
     article.querySelector(".scene-narration").oninput = (e) => scene.narration = e.target.value;
+    article.querySelector(".scene-reference").oninput = (e) => scene.reference_image = e.target.value;
     article.querySelector(".scene-characters").oninput = (e) => scene.character_ids =
       e.target.value.split(",").map(name => name.trim()).filter(Boolean);
     const canonButton = document.createElement("button");
