@@ -116,6 +116,11 @@ def preflight_animatic(series: dict, episode: dict) -> dict:
     expected = 0.0
     if not episode.get("scenes"):
         issues.append({"scene": None, "message": "Episode contains no scenes"})
+    caption_mode = episode.get("caption_mode") or "sidecar"
+    if caption_mode not in caption_engine.ALLOWED_MODES:
+        issues.append({"scene": None, "message": "Invalid caption display mode"})
+    elif caption_mode == "burned" and not caption_engine.subtitle_filter_available():
+        issues.append({"scene": None, "message": "FFmpeg libass subtitles filter is required for burned captions"})
     for i, scene in enumerate(episode.get("scenes") or [], 1):
         try:
             selected = asset_library.resolve_image(series, scene)
