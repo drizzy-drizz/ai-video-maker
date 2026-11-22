@@ -22,6 +22,21 @@ The server binds only to \`127.0.0.1:8766\`.
 6. A completed export is playable and downloadable through the Episode Export viewer. It also produces a scene-proportional SRT file and a machine-readable technical QC JSON report; subtitle words are **not yet speech aligned**.
 7. When Ollama and Qwen are installed, click **AI Direct Episode (Local Qwen)**. Review suggested shot directions individually and apply only the ones you want. This never automatically overwrites manual prompts.
 
+## Complete CPU motion-storyboard workflow
+
+This is **an actual video file made by animating existing still images**, not an AI video generator. It runs on CPU with standard FFmpeg; it is intended for concept/episode preview and optional stylized faceless videos.
+
+1. Run the Windows app and create a new English or Tagalog series from your storyline. Series Bible and episodes remain editable.
+2. Open **Asset Library**; use the native file selector to import PNG/JPEG/WebP pictures (max 25MB per image). Select accurate rights (original, licensed, permission, public domain), and optionally add source credit. The app saves a managed, SHA256-checked copy under your project. Replacing a reference creates **new version**, preserving existing pinned IDs.
+3. Open **Episodes + Shots**, select an episode, and set **Pinned library image** for **each** scene. Optionally assign saved images to characters via reference_asset_id in the Series Bible character JSON for automatic fallback.
+4. Choose zoom in/out, pan left/right, or still movement, and edit shot duration as needed. For existing narration, optionally type a local audio file path into each scene's narration field. The app automatically extends a shot to fit the full audio; it never trims or cuts off spoken lines.
+5. Optional licensed soundtrack: enter its local WAV/MP3/M4A/FLAC/OGG path and **explicitly confirm music rights**.
+6. Click **Check Images** to validate every scene reference and narration. Click **Render Motion Storyboard**. Progress/failure appears under Background Jobs.
+7. Review the generated video in the separate Motion Storyboard Preview. Download the **MP4, estimated SRT, and technical QA JSON**. The output is separate from genuine ComfyUI-generated moving clips. The original storyline and real-footage edit slots are unchanged.
+8. Important: SRT subtitles are **estimated from text and duration, not speech-aligned**; check the captions manually before posting. A technical QA report checks codec, time and frame dimensions, not emotional storytelling or photorealism.
+
+Automatic image creation, face-locking, natural voice synthesis and Google Flow-level video models still require separately installed free local models and compatible GPU memory. The GTX 750 is not enough for modern video diffusion.
+
 ## Natural episode boundaries
 
 New projects preferentially split at paragraph breaks and sentence boundaries near the selected episode word target, preserving the original word order (including Tagalog). Each episode records its opening/ending source excerpt to aid later recap and cliffhanger development. The system **does not** claim reliable automated emotional payoff detection yet. Existing user-edited series are never automatically re-planned when the app upgrades.
