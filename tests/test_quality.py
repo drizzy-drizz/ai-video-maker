@@ -142,6 +142,34 @@ class ActualFFmpegTests(unittest.TestCase):
                     "-ac", "1", str(voice))
         return video, voice
 
+    def test_real_footage_licensed_music_and_atomic_fallback(self):
+        video, voice = self.fixture(video_duration=2.2, voice_duration=1.4)
+        soundtrack = app.DATA / "background.wav"
+        # Reuse a valid local WAV; rights must be confirmed before any export.
+        soundtrack.write_bytes(voice.read_bytes())
+        series = app.new_series({"storyline": "A young artist writes a letter before the journey."})
+        scene = series["episodes"][0]["scenes"][0]
+        scene["clip"], scene["narration"] = str(video), str(voice)
+        episode = series["episodes"][0]
+        episode["soundtrack"] = str(soundtrack)
+        episode["soundtrack_rights_confirmed"] = True
+        app.save_project(series)
+        result = Path(app.render_episode(series["id"], episode["id"]))
+        self.assertTrue(result.is_file())
+        self.assertTrue(quality.media_info(result)["has_audio"])
+        qa = json.loads(Path(app.read_project(series["id"])["episodes"][0]["quality_report_path"]).read_text())
+        self.assertEqual(qa["status"], "technical_checks_passed")
+        self.assertTrue(qa["music_included"])
+        original_bytes = result.read_bytes()
+        latest = app.read_project(series["id"])
+        latest["episodes"][0]["soundtrack_rights_confirmed"] = False
+        app.save_project(latest)
+        check = quality.episode_preflight(latest, latest["episodes"][0])
+        self.assertIn("music_rights", [item["code"] for item in check["findings"]])
+        with self.assertRaisesRegex(ValueError, "rights|permission"):
+            app.render_episode(series["id"], episode["id"])
+        self.assertEqual(result.read_bytes(), original_bytes)
+
     def test_voice_longer_than_clip_is_blocked_not_cut_off(self):
         video, voice = self.fixture(video_duration=1.4, voice_duration=2.5)
         series = app.new_series({"storyline": "Maria traveled home to meet friends."})
