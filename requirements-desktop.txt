@@ -1,0 +1,3 @@
+# Optional native Windows window instead of a local browser tab.
+# The core server/editor intentionally requires only Python's standard library.
+pywebview>=5,<7
