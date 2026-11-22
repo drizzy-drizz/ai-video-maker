@@ -256,6 +256,42 @@ function renderEpisodes() {
   styleSelect.onchange = e => { episode.caption_mode = e.target.value; state.dirty = true; };
   captionMode.appendChild(styleSelect);
   head.appendChild(captionMode);
+  const batchVoice = document.createElement("div");
+  batchVoice.className = "voice-scene-controls episode-voice-batch";
+  const batchTitle = document.createElement("strong");
+  batchTitle.textContent = "One-click local narration for all missing scene voices";
+  const batchSelect = document.createElement("select");
+  [["auto", "Auto: installed language-appropriate model"], ["piper", "Piper ONNX"],
+   ["voxcpm2", "VoxCPM2 GGUF"]].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value; option.textContent = label;
+    batchSelect.appendChild(option);
+  });
+  const batchRights = document.createElement("label");
+  batchRights.className = "voice-license";
+  const batchConsent = document.createElement("input");
+  batchConsent.type = "checkbox";
+  batchRights.append(batchConsent, document.createTextNode(
+    " I confirm commercial/license rights to the selected model and all reference voices."));
+  const batchButton = document.createElement("button");
+  batchButton.className = "button primary";
+  batchButton.textContent = "Generate Voices For Entire Episode →";
+  batchButton.onclick = async () => {
+    if (!batchConsent.checked) return toast("Confirm model and voice reference rights first.", true);
+    try {
+      await saveSeries(false);
+      const result = await api("/api/series/" + state.series.id + "/episodes/" +
+        episode.id + "/narrate", "POST", { engine: batchSelect.value, rights_confirmed: true });
+      state.jobs[result.job_id] = "queued";
+      toast("Episode voice batch queued locally. Existing audio is preserved; new voices attach only if every shot succeeds.");
+      refreshJobs();
+    } catch (error) { toast(error.message, true); }
+  };
+  const batchNote = document.createElement("p");
+  batchNote.className = "muted";
+  batchNote.textContent = "Only scenes missing a valid audio file are generated. Failed batches do not attach partial voices.";
+  batchVoice.append(batchTitle, batchSelect, batchRights, batchButton, batchNote);
+  head.appendChild(batchVoice);
   music.querySelector(".storyboard-music-path").oninput = e => {
     episode.soundtrack = e.target.value; state.dirty = true;
   };
