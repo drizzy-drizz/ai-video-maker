@@ -39,3 +39,19 @@
 #animaticVideo{width:100%;max-height:560px;background:#000;border-radius:9px}
 #assetForm input[type=file]{max-width:100%}
 @media(max-width:800px){.asset-scene-controls{grid-template-columns:1fr}.asset-scene-controls label:first-child{grid-column:auto}.storyboard-actions{margin-top:12px}.asset-library-row img{height:75px;width:65px}}
+
+
+/* Fully integrated per-scene local voice and exact caption UI */
+.caption-mode-select{display:block;margin:12px 0 18px;color:var(--muted);font-size:12px}
+.caption-mode-select select{display:block;margin-top:6px;width:100%;max-width:510px;background:#0d131b;color:var(--text);border:1px solid var(--line);border-radius:9px;padding:10px}
+.manual-captions{padding:14px 0;margin:12px 0;border-top:1px solid var(--line)}
+.manual-captions label{color:#c9d3dd;font-size:12px;display:block;font-weight:650}
+.manual-captions textarea{width:100%;margin-top:8px;resize:vertical;min-height:80px;line-height:1.6;font:12px/1.6 Consolas,monospace;color:var(--text);background:#0d131b;border:1px solid #354354;border-radius:9px;padding:12px}
+.manual-captions textarea:focus{border-color:var(--accent);outline:none}
+.manual-captions p{font-size:11px}
+.voice-scene-controls{border:1px solid #36534b;border-radius:11px;background:#182923;margin:12px 0;padding:13px;display:grid;gap:10px}
+.voice-scene-controls>select{background:#0d131b;color:var(--text);border:1px solid #385649;border-radius:8px;padding:9px;width:100%}
+.voice-license{font-size:11px;color:#c5d8ce;line-height:1.5;display:flex;gap:7px;align-items:flex-start}
+.voice-license input{margin-top:3px}
+.voice-scene-controls .button{justify-self:start}
+.voice-scene-controls p{margin:2px 0;font-size:11px}
