@@ -22,6 +22,10 @@ The server binds only to \`127.0.0.1:8766\`.
 6. A completed export is playable and downloadable through the Episode Export viewer. It also produces a scene-proportional SRT file and a machine-readable technical QC JSON report; subtitle words are **not yet speech aligned**.
 7. When Ollama and Qwen are installed, click **AI Direct Episode (Local Qwen)**. Review suggested shot directions individually and apply only the ones you want. This never automatically overwrites manual prompts.
 
+## Natural episode boundaries
+
+New projects preferentially split at paragraph breaks and sentence boundaries near the selected episode word target, preserving the original word order (including Tagalog). Each episode records its opening/ending source excerpt to aid later recap and cliffhanger development. The system **does not** claim reliable automated emotional payoff detection yet. Existing user-edited series are never automatically re-planned when the app upgrades.
+
 ## New (quality-first batch)
 
 - Define your recurring characters in Series Bible as JSON objects (name, appearance, wardrobe, continuity). Assign a matching name to any shot, then **Preview Canon-Bound AI Prompt**; the same text conditioning is used when launching a video generation job. This is NOT image-reference identity locking.
