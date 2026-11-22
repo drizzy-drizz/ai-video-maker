@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Compile application
-        run: python -m compileall -q app.py animatic.py asset_library.py studio_quality.py story_planner.py caption_engine.py voice_engine.py
+        run: python -m compileall -q app.py animatic.py asset_library.py studio_quality.py story_planner.py caption_engine.py voice_engine.py timeline_engine.py
       - name: Check JavaScript syntax
         run: node --check web/app.js
       - name: Install FFmpeg for media integration test
