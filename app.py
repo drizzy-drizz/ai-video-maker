@@ -31,6 +31,7 @@ WEB = ROOT / "web"
 DATA = Path(os.environ.get("AIVM_DATA_DIR", str(Path.home() / "AI-Video-Maker"))).expanduser().resolve()
 DATA.mkdir(parents=True, exist_ok=True)
 LOCK = threading.RLock()
+RENDER_LOCK = threading.Lock()  # Serialize CPU-heavy episode exports; do not corrupt temp clips.
 JOBS: dict[str, dict] = {}
 EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm"}
 COMFY = os.environ.get("AIVM_COMFY_URL", "http://127.0.0.1:8188").rstrip("/")
@@ -329,7 +330,11 @@ def post_job(job_type: str, func, *args) -> str:
         with LOCK:
             JOBS[job_id]["status"] = "running"
         try:
-            output = func(*args)
+            if job_type in ("render", "motion-storyboard"):
+                with RENDER_LOCK:
+                    output = func(*args)
+            else:
+                output = func(*args)
             with LOCK:
                 JOBS[job_id].update(status="completed", detail=str(output))
         except Exception as exc:
@@ -493,6 +498,7 @@ def render_episode(series_id: str, episode_id: str) -> str:
         blockers = [f"scene {issue.get('scene','?')}: {issue['message']}"
                     for issue in report["findings"] if issue["level"] == "blocker"]
         raise ValueError("Export blocked by scene preflight: " + "; ".join(blockers))
+    soundtrack = animatic.validated_music(episode)
     width, height = (720, 1280) if project["format"] == "9:16" else (1280, 720)
     work = DATA / "renders" / series_id / episode_id
     work.mkdir(parents=True, exist_ok=True)
@@ -538,17 +544,26 @@ def render_episode(series_id: str, episode_id: str) -> str:
     exports = DATA / "exports" / series_id
     exports.mkdir(parents=True, exist_ok=True)
     target = exports / (episode_id + ".mp4")
+    assembled = work / "assembled.mp4"
+    staging = work / "final-staging.mp4"
     run_command(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0",
-                 "-i", str(manifest), "-c", "copy", "-movflags", "+faststart", str(target)])
-    subtitle_path = exports / (episode_id + ".srt")
-    subtitle_path.write_text(quality.make_subtitles(scenes, durations), encoding="utf-8-sig")
-    qc = quality.quality_report_export(target, sum(durations))
+                 "-i", str(manifest), "-c", "copy", "-movflags", "+faststart", str(assembled)])
+    if soundtrack:
+        animatic.apply_soundtrack(assembled, soundtrack, sum(durations), staging)
+    else:
+        shutil.copy2(assembled, staging)
+    qc = quality.quality_report_export(staging, sum(durations))
     qc["warnings"] = [item for item in report["findings"] if item["level"] == "advisory"]
     qc["subtitles"] = "approximate (scene text proportional to clip durations); review before posting"
-    qc_path = exports / (episode_id + "-quality.json")
-    qc_path.write_text(json.dumps(qc, ensure_ascii=False, indent=2), encoding="utf-8")
+    qc["music_included"] = bool(soundtrack)
     if qc["issues"]:
         raise RuntimeError("Export technical QA failed: " + "; ".join(qc["issues"]))
+    subtitle_path = exports / (episode_id + ".srt")
+    qc_path = exports / (episode_id + "-quality.json")
+    subtitle_path.write_text(quality.make_subtitles(scenes, durations), encoding="utf-8-sig")
+    qc_path.write_text(json.dumps(qc, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Never overwrite a previously playable episode with an incomplete export.
+    os.replace(staging, target)
     with LOCK:
         latest = read_project(series_id)
         updated = pick_episode(latest, episode_id)
