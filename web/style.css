@@ -12,3 +12,30 @@
 .episode-attachments{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .episode-attachments p{width:100%;font-size:11px}
 @media(max-width:750px){.preflight-row{grid-template-columns:1fr;gap:2px}}
+
+
+/* Finished vertical slice: immutable approved reference library + CPU motion storyboard */
+.asset-library-list{display:grid;gap:12px;margin-top:17px}
+.asset-library-row{display:flex;gap:15px;align-items:center;border:1px solid var(--line);background:#0d141c;padding:12px;border-radius:12px}
+.asset-library-row img{width:90px;height:95px;flex-shrink:0;object-fit:cover;border-radius:8px;background:#25323b}
+.asset-library-row>div{overflow-wrap:anywhere;min-width:0}
+.asset-library-row strong{display:block;font-size:13px}
+.asset-library-row small{color:var(--muted);font-size:10px}
+.asset-library-row p{color:var(--muted);font-size:11px;margin:4px 0 6px}
+.asset-scene-controls{display:grid;gap:10px;grid-template-columns:1fr 1fr;margin:12px 0;border-top:1px solid var(--line);padding-top:12px}
+.asset-scene-controls label:first-child{grid-column:1/-1}
+.asset-scene-controls label{margin:0;color:var(--muted);font-size:11px}
+.asset-scene-controls input,.asset-scene-controls select{display:block;width:100%;background:#0d131b;color:var(--text);border:1px solid #2d3947;border-radius:9px;padding:10px;margin:6px 0 0}
+.storyboard-panel{margin-top:18px;background:#1d282c;border-color:#385964}
+.storyboard-actions{display:flex;flex-direction:column;gap:9px}
+.storyboard-panel p{max-width:520px}
+.storyboard-music{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:12px 0 18px}
+.storyboard-music label{font-size:11px;color:var(--muted);flex:1;min-width:200px}
+.storyboard-music input[type=text]{display:block;width:100%;margin-top:5px;padding:10px;background:#0d131b;border:1px solid var(--line);border-radius:8px;color:var(--text)}
+.storyboard-music .music-confirm{display:flex;align-items:center;gap:7px;flex:0 0 195px}
+.storyboard-music input[type=checkbox]{width:auto}
+#animaticPreview{border:1px solid var(--line);border-radius:12px;padding:15px 18px;margin-top:12px;background:var(--panel)}
+#animaticPreview h3{font-size:14px}
+#animaticVideo{width:100%;max-height:560px;background:#000;border-radius:9px}
+#assetForm input[type=file]{max-width:100%}
+@media(max-width:800px){.asset-scene-controls{grid-template-columns:1fr}.asset-scene-controls label:first-child{grid-column:auto}.storyboard-actions{margin-top:12px}.asset-library-row img{height:75px;width:65px}}
