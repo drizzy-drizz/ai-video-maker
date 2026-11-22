@@ -203,7 +203,21 @@ async function refreshHealth() {
         '</small></div><span class="light ' + (isReady ? "" : "off") + '"></span>';
       area.appendChild(row);
     });
-  byId("serverStatus").textContent = "● Local engine online";
+  const gpu = info.gpu || {};
+  const warning = document.createElement("div");
+  warning.className = "ready-row";
+  warning.style.display = "block";
+  const good = gpu.video_generation === "not_validated";
+  warning.innerHTML = '<strong style="font-size:12px">GPU / AI-video preflight</strong>' +
+    '<small style="display:block;line-height:1.5;color:' +
+    (good ? 'var(--accent)' : 'var(--warning)') + '">' +
+    escapeHtml(gpu.message || "No GPU assessment available") + '</small>';
+  area.appendChild(warning);
+  const note = document.createElement("p");
+  note.className = "tiny-note";
+  note.textContent = info.comfyui_note || "Video generation is not verified.";
+  area.appendChild(note);
+  byId("serverStatus").textContent = "● Local editor online (generation unverified)";
 }
 
 async function refreshModels() {
