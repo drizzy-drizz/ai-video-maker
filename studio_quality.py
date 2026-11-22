@@ -247,6 +247,9 @@ def episode_preflight(series: dict, episode: dict) -> dict:
         import timeline_engine
         try:
             timeline = timeline_engine.plan_episode(series, episode)
+            if timeline["crossfades"] and not timeline_engine.transition_filters_available():
+                add("blocker", "transition_filters_missing",
+                    "Installed FFmpeg must include xfade AND acrossfade filters")
         except (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired) as exc:
             add("blocker", "invalid_edit_timeline", str(exc)[:320])
     return {
