@@ -45,7 +45,7 @@ MODEL_CATALOG = [
     {"id": "Wan-AI/Wan2.2-TI2V-5B", "task": "Real text/image-to-video", "license": "Apache-2.0", "backend": "ComfyUI / GPU", "url": "https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B"},
     {"id": "Tongyi-MAI/Z-Image-Turbo", "task": "Reference images", "license": "Apache-2.0", "backend": "ComfyUI / GPU", "url": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo"},
     {"id": "hexgrad/Kokoro-82M", "task": "English speech", "license": "Apache-2.0", "backend": "Local speech adapter (planned)", "url": "https://huggingface.co/hexgrad/Kokoro-82M"},
-    {"id": "CholoAsis/qnvoice-filipino-voxcpm2-gguf", "task": "Filipino speech", "license": "Apache-2.0 weights; synthetic voice permission in model card", "backend": "Local speech adapter (planned)", "url": "https://huggingface.co/CholoAsis/qnvoice-filipino-voxcpm2-gguf"},
+    {"id": "CholoAsis/qnvoice-filipino-voxcpm2-gguf", "task": "Filipino speech", "license": "Apache-2.0 weights; synthetic voice permission in model card", "backend": "Optional local VoxCPM2 CLI adapter; install model separately", "url": "https://huggingface.co/CholoAsis/qnvoice-filipino-voxcpm2-gguf"},
 ]
 
 
