@@ -167,6 +167,53 @@ class OfflineVoiceTests(unittest.TestCase):
                                           self.root / "bad.wav", True)
         self.assertFalse((self.root / "bad.wav").exists())
 
+    def test_full_episode_voice_job_is_atomic_and_never_replaces_approved_audio(self):
+        old_data = app.DATA
+        app.DATA = self.root
+        try:
+            project = app.new_series({"storyline": "Maria opened the front door. She greeted her family.",
+                                      "language": "en"})
+            ep = project["episodes"][0]
+            original = ep["scenes"][0]
+            # Make a second shot explicitly, to exercise atomic batch behavior.
+            second = {**original, "id": "0123456789ab", "number": 2,
+                      "script": "She met her friends at the market.", "narration": ""}
+            ep["scenes"] = [original, second]
+            app.save_project(project)
+            calls = []
+            def partial_failure(text, language, engine, destination, rights):
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                calls.append(str(destination))
+                if len(calls) == 2:
+                    raise RuntimeError("offline model crashed on second shot")
+                make_wav(destination)
+                return {"engine": "piper", "wav": str(destination)}
+            with patch("app.voice_engine.generate_wav", side_effect=partial_failure):
+                with self.assertRaisesRegex(RuntimeError, "crashed"):
+                    app.generate_episode_voices(project["id"], ep["id"], "piper", True)
+            unchanged = app.read_project(project["id"])["episodes"][0]["scenes"]
+            self.assertFalse(any(scene.get("narration") for scene in unchanged))
+            self.assertFalse(Path(calls[0]).exists(), "Failed batch must clean up generated WAV")
+
+            def voice_success(text, language, engine, destination, rights):
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                make_wav(destination)
+                return {"engine": "piper", "wav": str(destination), "duration_seconds": 1.1}
+            with patch("app.voice_engine.generate_wav", side_effect=voice_success) as generator:
+                summary = app.generate_episode_voices(project["id"], ep["id"], "piper", True)
+                self.assertEqual(generator.call_count, 2)
+            self.assertIn("2 voice files generated", summary)
+            approved = app.read_project(project["id"])["episodes"][0]["scenes"]
+            originals = [scene["narration"] for scene in approved]
+            self.assertTrue(all(Path(path).is_file() for path in originals))
+            with patch("app.voice_engine.generate_wav", side_effect=AssertionError("Should not run")):
+                skipped = app.generate_episode_voices(project["id"], ep["id"], "piper", True)
+            self.assertIn("already exist", skipped)
+            after = app.read_project(project["id"])["episodes"][0]["scenes"]
+            self.assertEqual(originals, [scene["narration"] for scene in after])
+        finally:
+            app.DATA = old_data
+
     def test_project_voice_attachment_and_script_revision_protection(self):
         old = app.DATA
         app.DATA = self.root
