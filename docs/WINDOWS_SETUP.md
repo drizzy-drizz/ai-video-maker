@@ -22,6 +22,21 @@ The server binds only to \`127.0.0.1:8766\`.
 6. A completed export is playable and downloadable through the Episode Export viewer. It also produces a scene-proportional SRT file and a machine-readable technical QC JSON report; subtitle words are **not yet speech aligned**.
 7. When Ollama and Qwen are installed, click **AI Direct Episode (Local Qwen)**. Review suggested shot directions individually and apply only the ones you want. This never automatically overwrites manual prompts.
 
+## Full real-video editorial timeline (new)
+
+This path uses actual **moving footage**, from your own files or a compatible local ComfyUI model. The separate CPU image-motion storyboard remains distinct.
+
+1. Attach at least one supported MP4/MOV/MKV/WebM video clip to each shot in the Episodes + Shots tab, or generate true footage using ComfyUI on sufficient hardware.
+2. Use **Move earlier/later** to rearrange shots without changing media files. Set **Trim in** (seconds from source start) and optional **Trim out** (blank = original video end).
+3. For each boundary choose **Hard cut**, **Video + audio fade**, **Wipe left + audio fade**, or **Slide left + audio fade**. Transition duration must be 0.10–1.50 seconds and less than 45% of either neighboring shot.
+4. **Preview Source Trim** plays the original selected clip using local byte-range playback; it is not an imitation of FFmpeg crossfade. Click **Check Timeline Timing** to inspect real source times, episode offsets and full duration.
+5. Add optional narration, licensed music, manual or approximate captions. Crossfades delay the incoming narrated line until its transition ends, and outgoing narration must fit before its outgoing fade. The app blocks unsafe narration and manually timed subtitles that overlap boundaries.
+6. Click **Check Episode Quality** to surface edit and media problems. Then **Render Edited Episode**. FFmpeg actually normalizes H.264/AAC clips and combines them with video xfade and matched audio acrossfade.
+7. Playback the **final encoded MP4** for the real transitions, audio and burned subtitles; download MP4, SRT and technical QA JSON. The QA report lists actual timeline offsets and transition types. Rendering is non-destructive; your raw video files are never rewritten.
+8. Editing the timeline while a render is running invalidates that job's saved revision, rather than publishing stale footage over the current edit.
+
+The exact full-media regression and install requirements are documented in [Editorial Timeline research](EDITORIAL_TIMELINE_RESEARCH_2026_11_23.md). Model-generated video quality still needs real GPU and human review. Large episodes with many sequential crossfades can take substantial CPU time.
+
 ## Voice and caption finishing (new workflow)
 
 - [Narration + Captions installation/configuration](NARRATION_CAPTIONS_2026_11_23.md) documents the optional **Piper** and **VoxCPM2 GGUF** offline engines. You must install a compatible and permitted voice/model externally; the app does NOT auto-download weights and will show missing-engine details.
@@ -87,7 +102,7 @@ This does not copy images into project storage or ensure a persistent approved r
 Use GitHub Actions → **Windows desktop build** → download the `AI-Video-Maker-Windows-portable` artifact after a successful run. Extract the entire folder and run `AI-Video-Maker.exe`; do not run just the EXE without its bundled files. The project does not bundle FFmpeg or large Hugging Face model weights. Windows GPU/full render acceptance testing remains pending.
 
 ## Model reality check
-Wan2.2 5B uses GPU-heavy diffusion; local generation on Ryzen 5 5600G APU + 16GB RAM without dGPU will be impractically slow or fail. Editing, canon, MP4 assembly and importing existing video remain viable.
+Wan2.2 5B uses GPU-heavy diffusion; the reported Ryzen 5 5600G, 16GB RAM and GTX 750 dGPU do **not** provide sufficient modern GPU compute/VRAM. Local generation of full-resolution cinematic model clips is impractical on this setup. Editing, canon, MP4 assembly and importing existing video remain viable.
 No paid service is required by this project. Downloading open weights doesn't imply free GPU compute.
 
 See research: \`docs/RESEARCH_2026-11-23.md\`.
