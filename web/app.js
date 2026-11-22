@@ -233,6 +233,34 @@ function renderEpisodes() {
   head.appendChild(preflight);
   head.appendChild(reportBox);
   reportBox.hidden = true;
+  const checkTimeline = document.createElement("button");
+  checkTimeline.className = "button ghost";
+  checkTimeline.style.margin = "10px 0 0 10px";
+  checkTimeline.textContent = "Check Timeline Timing";
+  const timingReport = document.createElement("div");
+  timingReport.className = "preflight-report";
+  timingReport.hidden = true;
+  checkTimeline.onclick = async () => {
+    try {
+      await saveSeries(false);
+      const timing = await api("/api/series/" + state.series.id +
+        "/episodes/" + episode.id + "/timeline");
+      timingReport.hidden = false;
+      timingReport.innerHTML = "<strong>NON-DESTRUCTIVE EDIT DECISIONS</strong><p>" +
+        escapeHtml(timing.total_seconds.toFixed(2)) + " sec final · " +
+        escapeHtml(timing.crossfades) + " video/audio crossfades</p>" +
+        timing.entries.map((item, i) =>
+          '<div class="preflight-row"><b>SHOT ' + (i + 1) + '</b><span>' +
+          escapeHtml(item.start.toFixed(2)) + "–" + escapeHtml(item.end.toFixed(2)) +
+          "s · Source " + escapeHtml(item.source_start.toFixed(2)) + "–" +
+          escapeHtml(item.source_end.toFixed(2)) + "s · " +
+          escapeHtml(item.transition_to_next) +
+          (item.transition_to_next !== "cut" ? " (" +
+           escapeHtml(item.transition_duration_seconds) + "s)" : "") +
+          "</span></div>").join("");
+    } catch(e) { toast(e.message, true); }
+  };
+  head.append(checkTimeline, timingReport);
   const music = document.createElement("div");
   music.className = "storyboard-music";
   music.innerHTML = '<label>Optional licensed background music (absolute local path)' +
@@ -300,7 +328,7 @@ function renderEpisodes() {
   };
   const sceneList = byId("sceneList");
   sceneList.innerHTML = "";
-  episode.scenes.forEach((scene) => {
+  episode.scenes.forEach((scene, sceneIndex) => {
     const article = document.createElement("article");
     article.className = "scene-card";
     article.innerHTML =
@@ -413,6 +441,113 @@ function renderEpisodes() {
     secondsLabel.appendChild(seconds);
     assignment.append(imageLabel, motionLabel, secondsLabel);
     article.appendChild(assignment);
+    const trimPanel = document.createElement("div");
+    trimPanel.className = "timeline-editor";
+    const name = document.createElement("strong");
+    name.textContent = "EDITORIAL TIMELINE · Shot " + (sceneIndex + 1);
+    const timelineGrid = document.createElement("div");
+    timelineGrid.className = "timeline-grid";
+    const trimStart = document.createElement("label");
+    trimStart.textContent = "Trim in (seconds from source start)";
+    const startInput = document.createElement("input");
+    startInput.type = "number"; startInput.min = "0"; startInput.step = ".01";
+    startInput.value = scene.trim_start_seconds ?? 0;
+    startInput.oninput = e => {
+      scene.trim_start_seconds = e.target.value === "" ? 0 : Number(e.target.value);
+      state.dirty = true;
+    };
+    trimStart.appendChild(startInput);
+    const trimEnd = document.createElement("label");
+    trimEnd.textContent = "Trim out (blank = source end)";
+    const endInput = document.createElement("input");
+    endInput.type = "number"; endInput.min = "0"; endInput.step = ".01";
+    endInput.placeholder = "Entire source";
+    endInput.value = scene.trim_end_seconds ?? "";
+    endInput.oninput = e => {
+      scene.trim_end_seconds = e.target.value === "" ? "" : Number(e.target.value);
+      state.dirty = true;
+    };
+    trimEnd.appendChild(endInput);
+    timelineGrid.append(trimStart, trimEnd);
+    if (sceneIndex < episode.scenes.length - 1) {
+      const effectLabel = document.createElement("label");
+      effectLabel.textContent = "Transition to NEXT shot";
+      const effect = document.createElement("select");
+      [["cut", "Hard cut"], ["fade", "Video + audio fade"],
+       ["wipeleft", "Wipe left + audio fade"], ["slideleft", "Slide left + audio fade"]].forEach(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = value; option.textContent = label;
+        effect.appendChild(option);
+      });
+      effect.value = scene.transition_to_next || "cut";
+      effect.onchange = e => { scene.transition_to_next = e.target.value; state.dirty = true; };
+      effectLabel.appendChild(effect);
+      const secondsLabel = document.createElement("label");
+      secondsLabel.textContent = "Overlap duration (0.10–1.50s)";
+      const seconds = document.createElement("input");
+      seconds.type = "number"; seconds.min = ".1"; seconds.max = "1.5"; seconds.step = ".05";
+      seconds.value = scene.transition_duration_seconds || 0.35;
+      seconds.oninput = e => { scene.transition_duration_seconds = Number(e.target.value); state.dirty = true; };
+      secondsLabel.appendChild(seconds);
+      timelineGrid.append(effectLabel, secondsLabel);
+    }
+    const order = document.createElement("div");
+    order.className = "timeline-order";
+    const move = (change) => {
+      try {
+        flushCaptionEditors();
+        const next = sceneIndex + change;
+        if (next < 0 || next >= episode.scenes.length) return;
+        [episode.scenes[sceneIndex], episode.scenes[next]] =
+          [episode.scenes[next], episode.scenes[sceneIndex]];
+        episode.scenes.forEach((shot, i) => shot.number = i + 1);
+        state.dirty = true;
+        renderEpisodes();
+        toast("Timeline reordered; source footage is unchanged.");
+      } catch(error) { toast(error.message, true); }
+    };
+    const up = document.createElement("button");
+    up.className = "button ghost";
+    up.textContent = "Move earlier";
+    up.disabled = sceneIndex === 0;
+    up.onclick = () => move(-1);
+    const down = document.createElement("button");
+    down.className = "button ghost";
+    down.textContent = "Move later";
+    down.disabled = sceneIndex === episode.scenes.length-1;
+    down.onclick = () => move(1);
+    const view = document.createElement("button");
+    view.className = "button ghost";
+    view.textContent = "Preview Source Trim";
+    const sourceVideo = document.createElement("video");
+    sourceVideo.className = "shot-source-preview";
+    sourceVideo.controls = true;
+    sourceVideo.playsInline = true;
+    sourceVideo.preload = "none";
+    sourceVideo.hidden = true;
+    view.onclick = async () => {
+      try {
+        await saveSeries(false);
+        const url = "/api/series/" + state.series.id + "/episodes/" + episode.id +
+          "/scenes/" + scene.id + "/source";
+        sourceVideo.hidden = false;
+        sourceVideo.src = url + "#t=" + Number(scene.trim_start_seconds || 0);
+        sourceVideo.load();
+        const start = Number(scene.trim_start_seconds || 0);
+        sourceVideo.onloadedmetadata = () => { sourceVideo.currentTime = start; };
+        sourceVideo.ontimeupdate = () => {
+          const limit = scene.trim_end_seconds === "" || scene.trim_end_seconds == null
+            ? sourceVideo.duration : Number(scene.trim_end_seconds);
+          if (sourceVideo.currentTime >= limit - 0.03) sourceVideo.pause();
+        };
+      } catch (error) { toast(error.message, true); }
+    };
+    order.append(up, down, view);
+    const explanation = document.createElement("p");
+    explanation.className = "muted";
+    explanation.textContent = "Preview Source Trim plays original frames, not simulated transitions. Render Episode plays actual FFmpeg cuts, crossfades and synchronized subtitles. Existing source files are never modified.";
+    trimPanel.append(name, timelineGrid, order, sourceVideo, explanation);
+    article.appendChild(trimPanel);
     const captionWrap = document.createElement("div");
     captionWrap.className = "manual-captions";
     const captionLabel = document.createElement("label");
