@@ -78,8 +78,8 @@ This does not copy images into project storage or ensure a persistent approved r
 
 ## Verified CI status (2026-11-23)
 
-- [Linux media and API CI — 33 tests passed](https://github.com/drizzy-drizz/ai-video-maker/actions/runs/45060101450)
-- [Windows Python runtime, UI/story-save smoke test and portable app packaging passed](https://github.com/drizzy-drizz/ai-video-maker/actions/runs/45060101472)
+- [Linux media, narration, captions and API CI — 45 tests passed](https://github.com/drizzy-drizz/ai-video-maker/actions/runs/45061593330)
+- [Latest Windows Python runtime/UI/story-save smoke test and portable app packaging PASSED](https://github.com/drizzy-drizz/ai-video-maker/actions/runs/45061593343) (download GitHub Actions Artifacts > AI-Video-Maker-Windows-portable)
 - These tests DO NOT validate a real AI diffusion model on the GTX 750, a native double-click GUI session on the user's PC, full quality of Tagalog/English TTS, or any advanced edited film output.
 
 ## Portable Windows build
