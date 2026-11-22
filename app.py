@@ -568,7 +568,7 @@ def render_episode(series_id: str, episode_id: str) -> str:
     qc["warnings"] = [item for item in report["findings"] if item["level"] == "advisory"]
     qc.update(caption_stats)
     qc["caption_export"] = caption_output["mode"]
-    qc["subtitles"] = "manual cues where supplied; otherwise rough scene timing — review before publishing"
+    qc["subtitles"] = "manual cues where supplied; otherwise approximate scene timing — review before publishing"
     qc["music_included"] = bool(soundtrack)
     if qc["issues"]:
         raise RuntimeError("Export technical QA failed: " + "; ".join(qc["issues"]))
