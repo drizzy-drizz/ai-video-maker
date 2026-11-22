@@ -55,3 +55,18 @@
 .voice-license input{margin-top:3px}
 .voice-scene-controls .button{justify-self:start}
 .voice-scene-controls p{margin:2px 0;font-size:11px}
+
+
+/* Non-destructive editorial scene timeline: real FFmpeg trims and AV crossfades */
+.timeline-editor{background:#121e29;border:1px solid #3b576a;border-radius:12px;padding:14px 15px;margin:14px 0;overflow-wrap:anywhere}
+.timeline-editor>strong{display:block;font-size:12px;letter-spacing:.25px;margin-bottom:9px}
+.timeline-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.timeline-grid label{font-size:11px;color:var(--muted);margin:0}
+.timeline-grid input,.timeline-grid select{display:block;width:100%;margin:6px 0 0;padding:10px;border:1px solid #405566;border-radius:8px;background:#0e1722;color:var(--text)}
+.timeline-order{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
+.timeline-order .button{flex:1 1 auto;white-space:nowrap}
+.timeline-order .button:disabled{opacity:.4;cursor:not-allowed}
+.timeline-editor>p{font-size:11px;line-height:1.6;margin:10px 0 0}
+.shot-source-preview{width:100%;max-height:330px;object-fit:contain;background:#000;border-radius:8px}
+.shot-source-preview[hidden]{display:none}
+@media(max-width:650px){.timeline-grid{grid-template-columns:1fr}}
