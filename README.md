@@ -27,6 +27,10 @@ A general-purpose Windows-first app: paste a Tagalog or English storyline; build
 
 For compatible local image-to-video workflows, **approved scene/character image paths** are now uploaded through ComfyUI's local image API and passed into an explicit {{REFERENCE_IMAGE}} LoadImage placeholder. A missing placeholder **blocks generation** rather than falsely claiming that a reference was applied. Supports PNG/JPEG/WebP, one reference image per basic workflow. This is an actual media handoff but character identity and visual quality still require human review and a compatible GPU. See [Windows reference setup](docs/WINDOWS_SETUP.md).
 
+### Narrative-aware story structure (new series only)
+
+The story planner now weighs **paragraph/scene endings, sentence boundaries and modest turning-point cues** instead of arbitrarily splitting exactly every N words. It records hook/ending excerpts and rough beat-position metadata, verifies every original word remains included, and leaves already-edited existing series untouched. This is a **deterministic heuristic**, not a deep AI evaluation of plot quality; Ollama shot direction remains optional.
+
 ### New quality-first implementation
 
 - Scene-specific character, wardrobe, location, world and style text canon is composed into the **actual ComfyUI prompt**. Identity is not guaranteed without reference-image support.
