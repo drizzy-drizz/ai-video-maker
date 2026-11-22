@@ -19,13 +19,20 @@ The server binds only to \`127.0.0.1:8766\`.
 3. Edit prompts shot by shot. You can import existing footage by entering its absolute local filename and saving.
 4. If using ComfyUI, open its workflow, export it in **API JSON** format (not the editor graph layout), replace **positive prompt text** with \`{{PROMPT}}\`. Optionally set negative prompt to \`{{NEGATIVE_PROMPT}}\` and seed to \`{{SEED}}\`. Paste JSON into the app's right sidebar and install. Start ComfyUI locally with matching model weights. Generate each shot from the episode pane; outputs must be video (MP4/MOV/WebM), not a PNG.
 5. Click Render Episode to normalize resolution/audio and concatenate moving clips into a MP4. If any scene is missing a real clip, export **fails with a clear error** rather than creating a slideshow.
-6. A completed export is playable and downloadable through the Episode Export viewer.
+6. A completed export is playable and downloadable through the Episode Export viewer. It also produces a scene-proportional SRT file and a machine-readable technical QC JSON report; subtitle words are **not yet speech aligned**.
 7. When Ollama and Qwen are installed, click **AI Direct Episode (Local Qwen)**. Review suggested shot directions individually and apply only the ones you want. This never automatically overwrites manual prompts.
+
+## New (quality-first batch)
+
+- Define your recurring characters in Series Bible as JSON objects (name, appearance, wardrobe, continuity). Assign a matching name to any shot, then **Preview Canon-Bound AI Prompt**; the same text conditioning is used when launching a video generation job. This is NOT image-reference identity locking.
+- Supply an existing local WAV/MP3/M4A/FLAC/OGG narration audio file per scene. The renderer lowers any source sound under it and checks the full voice fits within the video. Too-short shots are blocked, not trimmed.
+- **Check Episode Quality** runs local ffprobe preflight for missing videos, audio overrun, extreme speech pace, aspect mismatch, duplicate footage and basic series-bible completeness.
+- Successful export includes separate SRT estimated captions and a technical QC report. Manually watch for wrong speech/caption alignment before Facebook publication.
 
 ## NOT implemented yet
 - Advanced AI-chosen episode boundaries, cliffhanger structure and holistic episode writing (Qwen currently suggests per-shot direction and title).
 - Built-in Wan2.2 API JSON template, reference image inputs and image generation.
-- Natural Tagalog or English AI narration, alignment, music, sound design, speech captions.
+- Automatically generated natural Tagalog/English TTS, forced word alignment, licensed music/SFX library and burn-in caption preview parity. User-supplied narration audio and rough sidecar SRT are now supported.
 - Non-destructive multitrack editor, shot extension, character drift QA and packaging a signed standalone .exe.
 - Native Windows integration tests. GitHub Actions CI exercises source and FFmpeg in Linux; that is not a Windows GPU validation.
 
