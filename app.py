@@ -185,10 +185,64 @@ def reachable(url: str) -> bool:
         return False
 
 
+def gpu_preflight() -> dict:
+    """Report local NVIDIA hardware without claiming full model compatibility."""
+    tool = shutil.which("nvidia-smi")
+    if not tool:
+        return {"detected": False, "name": "", "vram_gb": None,
+                "video_generation": "unverified",
+                "message": "nvidia-smi not found. GPU capability is unknown; editor works on CPU."}
+    commands = [
+        [tool, "--query-gpu=name,memory.total,compute_cap", "--format=csv,noheader,nounits"],
+        [tool, "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+    ]
+    for command in commands:
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                continue
+            row = (result.stdout or "").strip().splitlines()[0].split(",")
+            if len(row) < 2:
+                continue
+            name = row[0].strip()
+            vram_gb = round(float(row[1].strip().replace(" MiB", "")) / 1024, 2)
+            capability = row[2].strip() if len(row) > 2 else ""
+            older_gpu = bool(capability and float(capability) < 7.5)
+            low_vram = vram_gb < 8
+            if low_vram or older_gpu:
+                explanation = (
+                    f"{name} ({vram_gb:.1f} GB): not suitable for local Wan2.2 5B. "
+                    "Story planning and FFmpeg editing may still work. "
+                    "Modern CUDA/video model support is not guaranteed."
+                )
+                suitability = "insufficient_for_wan22_5b"
+            else:
+                explanation = (
+                    f"{name} ({vram_gb:.1f} GB): hardware may support some "
+                    "quantized/offloaded video workflows, but model compatibility "
+                    "and rendered quality are NOT verified."
+                )
+                suitability = "not_validated"
+            return {
+                "detected": True, "name": name, "vram_gb": vram_gb,
+                "compute_capability": capability or None,
+                "video_generation": suitability, "message": explanation
+            }
+        except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+            continue
+    return {"detected": False, "name": "", "vram_gb": None,
+            "video_generation": "unverified",
+            "message": "Could not query NVIDIA GPU; video generation capability is unverified."}
+
+
 def health() -> dict:
+    comfy_running = reachable(COMFY + "/system_stats")
     return {"ffmpeg": bool(shutil.which("ffmpeg") and shutil.which("ffprobe")),
             "ollama": reachable(OLLAMA + "/api/tags"),
-            "comfyui": reachable(COMFY + "/system_stats"),
+            "comfyui": comfy_running,
+            "comfyui_note": "ComfyUI connected; compatible video model and VRAM not verified." if comfy_running
+                            else "ComfyUI not connected; real motion generation unavailable.",
+            "gpu": gpu_preflight(),
             "desktop_shell": "pywebview optional", "storage": str(DATA),
             "mode": "local-only; no paid API"}
 
