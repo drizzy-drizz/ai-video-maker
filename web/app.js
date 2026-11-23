@@ -512,6 +512,8 @@ function buildDramaShotControls(episode, scene) {
         return toast("Extracted dialogue exceeds local voice engine limit. Select the spoken lines manually.", true);
       voiceText.value = exact;
       scene.voice_script = exact;
+      scene.voice_mode = "narrate";
+      voiceMode.value = "narrate";
       state.dirty = true;
       toast("Source-exact dialogue selected for speech; camera screenplay stays unchanged.");
     };
@@ -523,6 +525,8 @@ function buildDramaShotControls(episode, scene) {
   clearVoice.onclick = () => {
     voiceText.value = "";
     scene.voice_script = "";
+    scene.voice_mode = "narrate";
+    voiceMode.value = "narrate";
     state.dirty = true;
   };
   voiceActions.appendChild(clearVoice);
