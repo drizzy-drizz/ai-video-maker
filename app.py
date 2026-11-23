@@ -347,9 +347,9 @@ def post_job(job_type: str, func, *args) -> str:
             elif job_type in ("offline-voice", "episode-narration"):
                 with VOICE_LOCK:
                     output = func(*args)
-            elif job_type in ("video-generation", "episode-video"):
+            elif job_type in ("video-generation", "episode-video", "scene-image", "episode-images"):
                 with GENERATION_LOCK:
-                    if job_type == "episode-video":
+                    if job_type in ("episode-video", "episode-images"):
                         def progress(detail):
                             with LOCK:
                                 JOBS[job_id]["detail"] = str(detail)[:400]
@@ -365,6 +365,129 @@ def post_job(job_type: str, func, *args) -> str:
                 JOBS[job_id].update(status="failed", detail=str(exc)[:1000])
     threading.Thread(target=execute, daemon=True).start()
     return job_id
+
+
+def generate_scene_image(series_id: str, episode_id: str, scene_id: str,
+                         workflow_name: str) -> str:
+    """Generate an actual ComfyUI still and keep it as an UNAPPROVED asset draft.
+
+    No fake image, no paid API, no auto-approval of model/licensing. The artist
+    explicitly reviews and approves the result before it conditions a real
+    video generator or becomes a motion storyboard ingredient.
+    """
+    with LOCK:
+        series = read_project(series_id)
+        episode = pick_episode(series, episode_id)
+        scene = copy.deepcopy(pick_scene(episode, scene_id))
+    template = json.loads(workflow_path(workflow_name).read_text("utf-8"))
+    canonical = quality.compose_canonical_prompt(series, episode, scene)
+    graph_text = json.dumps(template)
+    reference = quality.reference_image_for_scene(series, scene) if "{{REFERENCE_IMAGE}}" in graph_text else None
+    if "{{REFERENCE_IMAGE}}" in graph_text and not reference:
+        raise ValueError("Image workflow requires an approved reference image, but no reference is assigned")
+    reference_name = upload_reference_to_comfy(reference) if reference else ""
+    seed = int(uuid.uuid4().int % 2_147_483_647)
+    prompt_graph = interpolate(template, {
+        "{{PROMPT}}": canonical["prompt"],
+        "{{NEGATIVE_PROMPT}}": scene.get("negative_prompt", ""),
+        "{{SEED}}": seed,
+        "{{REFERENCE_IMAGE}}": reference_name
+    })
+    result = request_json(COMFY + "/prompt", {
+        "prompt": prompt_graph, "client_id": str(uuid.uuid4())
+    }, timeout=30)
+    prompt_id = str(result.get("prompt_id") or "")
+    if not prompt_id:
+        raise RuntimeError("ComfyUI refused image workflow: " + str(result.get("error", result))[:320])
+    for _ in range(1600):
+        time.sleep(1.5)
+        history = request_json(COMFY + "/history/" + urllib.parse.quote(prompt_id), timeout=10)
+        run = history.get(prompt_id)
+        if not run:
+            continue
+        if run.get("status", {}).get("status_str") == "error":
+            raise RuntimeError("Local ComfyUI image generation failed; inspect its model logs")
+        for output in run.get("outputs", {}).values():
+            for item in output.get("images", []):
+                filename = str(item.get("filename") or "")
+                suffix = Path(filename).suffix.lower()
+                if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+                    continue
+                qs = urllib.parse.urlencode({
+                    "filename": filename, "subfolder": item.get("subfolder", ""),
+                    "type": item.get("type", "output")
+                })
+                local_url(COMFY + "/view?" + qs)
+                temporary_folder = DATA / "upload-staging"
+                temporary_folder.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=temporary_folder, suffix=suffix, delete=False) as temp:
+                    staging = Path(temp.name)
+                    with urllib.request.urlopen(COMFY + "/view?" + qs, timeout=90) as response:
+                        image_bytes = response.read(25 * 1024 * 1024 + 1)
+                        if len(image_bytes) > 25 * 1024 * 1024:
+                            raise ValueError("Generated still exceeds image asset size limit")
+                        temp.write(image_bytes)
+                try:
+                    quality.validate_image(staging)
+                    with LOCK:
+                        latest = read_project(series_id)
+                        active_episode = pick_episode(latest, episode_id)
+                        active_scene = pick_scene(active_episode, scene_id)
+                        meta = asset_library.add_image_asset(
+                            DATA, latest, str(staging),
+                            title=("Scene " + str(active_scene.get("number") or "") +
+                                   " generated still")[:120],
+                            rights="generated_unverified",
+                            credit="Generated locally by ComfyUI workflow: " + workflow_name)
+                        meta["generator"] = {
+                            "workflow": workflow_name, "seed": seed,
+                            "prompt_id": prompt_id, "prompt": canonical["prompt"][:3000],
+                            "generated_at": now(), "model_license_reviewed": False,
+                            "reference_used": bool(reference)
+                        }
+                        unchanged = all(
+                            str(active_scene.get(key) or "") == str(scene.get(key) or "")
+                            for key in ("script", "prompt", "reference_asset_id", "negative_prompt"))
+                        if unchanged:
+                            active_scene["generated_image_asset_id"] = meta["id"]
+                        save_project(latest)
+                    if not unchanged:
+                        return ("Image preserved in Asset Library as unassigned draft " + meta["id"] +
+                                "; shot changed during inference")
+                    return "Draft still " + meta["id"] + " saved for review and approval"
+                finally:
+                    staging.unlink(missing_ok=True)
+        raise RuntimeError("Image workflow returned no supported still images; choose a ComfyUI SaveImage workflow")
+    raise TimeoutError("Local image generation exceeded 40 minutes; review ComfyUI queue")
+
+
+def generate_missing_episode_images(series_id: str, episode_id: str,
+                                     workflow_name: str, progress=None) -> str:
+    """Resumable source-grounded still generation, never claims automatic approval."""
+    initial = read_project(series_id)
+    scenes = pick_episode(initial, episode_id).get("scenes") or []
+    pending = [str(scene["id"]) for scene in scenes
+               if not scene.get("generated_image_asset_id") and
+               not scene.get("reference_asset_id") and
+               not scene.get("reference_image")]
+    if not pending:
+        return "Every shot already has an assigned approved image or a candidate draft"
+    for number, scene_id in enumerate(pending, 1):
+        latest = read_project(series_id)
+        scene = pick_scene(pick_episode(latest, episode_id), scene_id)
+        if scene.get("generated_image_asset_id") or scene.get("reference_asset_id"):
+            continue
+        if progress:
+            progress(f"Local image generation {number}/{len(pending)} · " +
+                     str(scene.get("script") or "")[:80])
+        try:
+            generate_scene_image(series_id, episode_id, scene_id, workflow_name)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Image batch stopped at shot {number}/{len(pending)}: {exc}. "
+                "Previously generated drafts remain saved. Retry to resume missing shots.") from exc
+    return ("Image generation batch complete; draft stills retained for explicit review. "
+            "No model license or image quality was automatically approved.")
 
 
 def generate_scene(series_id: str, episode_id: str, scene_id: str, workflow_name: str) -> str:
