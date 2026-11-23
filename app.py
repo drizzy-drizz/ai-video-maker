@@ -32,6 +32,7 @@ import portable_workspace
 import music_workspace
 import sound_effects
 import drama_studio
+import comfy_drama_bridge
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -569,96 +570,165 @@ def generate_missing_episode_images(series_id: str, episode_id: str,
 
 
 def generate_scene(series_id: str, episode_id: str, scene_id: str, workflow_name: str) -> str:
+    """Execute a REAL ComfyUI model, including optional speech/frame conditioning.
+
+    Each model output becomes an immutable, unapproved video take. No model or
+    face-consistency results are invented when checkpoints/GPU are unavailable.
+    """
     with LOCK:
         project = read_project(series_id)
-        scene = copy.deepcopy(pick_scene(pick_episode(project, episode_id), scene_id))
+        episode = copy.deepcopy(pick_episode(project, episode_id))
+        scene = copy.deepcopy(pick_scene(episode, scene_id))
     template = json.loads(workflow_path(workflow_name).read_text("utf-8"))
+    drama_studio.workflow_capabilities(template)
     seed = scene.get("seed") if isinstance(scene.get("seed"), int) else int(uuid.uuid4().int % 2_147_483_647)
     preflight_gpu = gpu_preflight()
     if preflight_gpu.get("video_generation") == "insufficient_for_wan22_5b":
         raise RuntimeError("Local video generation blocked by GPU preflight: " + preflight_gpu["message"])
-    canon = quality.compose_canonical_prompt(project, pick_episode(project, episode_id), scene)
+    canon = quality.compose_canonical_prompt(project, episode, scene)
     graph_json = json.dumps(template)
     image_reference = quality.reference_image_for_scene(project, scene)
     requires_image = "{{REFERENCE_IMAGE}}" in graph_json
     if image_reference and not requires_image:
-        raise ValueError("Scene has a reference image but ComfyUI workflow has no {{REFERENCE_IMAGE}} placeholder. Add a LoadImage node to truly condition the model.")
+        raise ValueError(
+            "Scene has an approved reference image but the workflow does not contain "
+            "{{REFERENCE_IMAGE}}. Add an actual LoadImage node or use a compatible graph.")
     if requires_image and not image_reference:
-        raise ValueError("ComfyUI workflow requires {{REFERENCE_IMAGE}}. Assign a scene or recurring-character reference image first.")
+        raise ValueError(
+            "Workflow requires {{REFERENCE_IMAGE}}. Approve a scene/character image first.")
+    staged_audio = None
+    dialogue_meta = None
+    last_frame_info = None
+    dialogue_name = ""
+    previous_frame_name = ""
     image_name = upload_reference_to_comfy(image_reference) if requires_image else ""
-    graph = interpolate(template, {
-        "{{PROMPT}}": canon["prompt"],
-        "{{NEGATIVE_PROMPT}}": scene.get("negative_prompt", ""),
-        "{{SEED}}": seed,
-        "{{REFERENCE_IMAGE}}": image_name
-    })
-    result = request_json(COMFY + "/prompt", {"prompt": graph, "client_id": str(uuid.uuid4())}, timeout=30)
-    prompt_id = result.get("prompt_id")
-    if not prompt_id:
-        raise RuntimeError("ComfyUI rejected workflow: " + str(result.get("error", result))[:350])
-    # Shot generation may take a long time. Poll a bounded time and report failure rather than pretending success.
-    for _ in range(2400):
-        time.sleep(1.5)
-        history = request_json(COMFY + "/history/" + urllib.parse.quote(str(prompt_id)), timeout=10)
-        run = history.get(prompt_id)
-        if not run:
-            continue
-        if run.get("status", {}).get("status_str") == "error":
-            raise RuntimeError("ComfyUI generation failed; review its server logs")
-        outputs = run.get("outputs", {})
-        for output in outputs.values():
-            for key in ("videos", "gifs"):
-                for asset in output.get(key, []):
-                    filename = str(asset.get("filename", ""))
-                    suffix = Path(filename).suffix.lower()
-                    if suffix not in EXTENSIONS:
-                        continue
-                    query = urllib.parse.urlencode({
-                        "filename": filename, "subfolder": asset.get("subfolder", ""),
-                        "type": asset.get("type", "output")
-                    })
-                    location = DATA / "media" / series_id
-                    location.mkdir(parents=True, exist_ok=True)
-                    destination = location / (scene_id + "-" + uuid.uuid4().hex[:16] + suffix)
-                    local_url(COMFY + "/view?" + query)
-                    with urllib.request.urlopen(COMFY + "/view?" + query, timeout=90) as response, open(destination, "wb") as handle:
-                        shutil.copyfileobj(response, handle)
-                    if destination.stat().st_size == 0:
-                        raise RuntimeError("ComfyUI returned an empty video")
-                    with LOCK:
-                        updated = read_project(series_id)
-                        episode = pick_episode(updated, episode_id)
-                        target = pick_scene(episode, scene_id)
-                        # If an editor changed this shot while the model was running,
-                        # preserve the newly generated video as an alternate take,
-                        # but never silently discard the user's current selection.
-                        unchanged = all(
-                            str(target.get(key) or "") == str(scene.get(key) or "")
-                            for key in ("clip", "script", "prompt", "reference_asset_id",
-                                        "reference_image", "negative_prompt"))
-                        provenance = {
-                            "backend": "ComfyUI", "workflow": workflow_name,
-                            "prompt_id": prompt_id, "seed": seed,
-                            "reference_image": str(image_reference) if image_reference else "",
-                            "generated_at": now(), "reviewed": False
-                        }
-                        take = take_workspace.add_take(
-                            DATA, series_id, episode_id, target, destination,
-                            title="Generated shot " + str(target.get("number") or "") +
-                                  " · " + workflow_name,
-                            rights="generated_unverified", origin="ComfyUI",
-                            notes="Check video model license, motion and face consistency before publishing",
-                            provenance=provenance, select=unchanged, move=True)
-                        if unchanged:
-                            target["seed"] = seed
-                            scene_workspace.invalidate(episode)
-                        save_project(updated)
-                    if not unchanged:
-                        return ("Generated video preserved as alternate take " + take["id"] +
-                                "; active shot was not replaced because edits changed during inference")
-                    return str(take["path"])
-        raise RuntimeError("ComfyUI finished but returned no MP4/WebM/MOV video; use a video-saving node")
-    raise TimeoutError("ComfyUI generation exceeded 60 minutes; inspect queue and retry manually")
+    try:
+        if "{{PREVIOUS_FRAME}}" in graph_json:
+            frame, last_frame_info = comfy_drama_bridge.previous_approved_frame(
+                project, episode, scene_id, DATA / "comfy-frame-staging" / series_id)
+            try:
+                previous_frame_name = upload_reference_to_comfy(frame)
+            finally:
+                frame.unlink(missing_ok=True)
+        if "{{DIALOGUE_AUDIO}}" in graph_json:
+            dialogue_name, staged_audio, dialogue_meta = (
+                comfy_drama_bridge.stage_dialogue_audio(scene))
+        plan = scene.get("drama_plan") or {}
+        dialogue_lines = plan.get("dialogue") or []
+        exact_dialogue = " ".join(
+            str(line.get("exact_line") or "") for line in dialogue_lines
+            if isinstance(line, dict))[:3000]
+        graph = interpolate(template, {
+            "{{PROMPT}}": canon["prompt"],
+            "{{NEGATIVE_PROMPT}}": scene.get("negative_prompt", ""),
+            "{{SEED}}": seed, "{{REFERENCE_IMAGE}}": image_name,
+            "{{PREVIOUS_FRAME}}": previous_frame_name,
+            "{{DIALOGUE_AUDIO}}": dialogue_name,
+            "{{DIALOGUE_TEXT}}": exact_dialogue
+        })
+        result = request_json(
+            COMFY + "/prompt", {"prompt": graph, "client_id": str(uuid.uuid4())},
+            timeout=30)
+        prompt_id = str(result.get("prompt_id") or "")
+        if not prompt_id:
+            raise RuntimeError(
+                "ComfyUI rejected video graph: " +
+                str(result.get("error", result))[:400])
+        for _ in range(2400):
+            time.sleep(1.5)
+            history = request_json(
+                COMFY + "/history/" + urllib.parse.quote(prompt_id), timeout=10)
+            run = history.get(prompt_id)
+            if not run:
+                continue
+            if run.get("status", {}).get("status_str") == "error":
+                raise RuntimeError(
+                    "ComfyUI model execution failed; check the local ComfyUI logs")
+            for output in run.get("outputs", {}).values():
+                for key in ("videos", "gifs", "files"):
+                    for asset in output.get(key, []):
+                        filename = str(asset.get("filename") or "")
+                        suffix = Path(filename).suffix.lower()
+                        if suffix not in EXTENSIONS:
+                            continue
+                        query = urllib.parse.urlencode({
+                            "filename": filename,
+                            "subfolder": asset.get("subfolder", ""),
+                            "type": asset.get("type", "output")
+                        })
+                        location = DATA / "media" / series_id
+                        location.mkdir(parents=True, exist_ok=True)
+                        destination = location / (
+                            scene_id + "-" + uuid.uuid4().hex[:16] + suffix)
+                        local_url(COMFY + "/view?" + query)
+                        try:
+                            with urllib.request.urlopen(
+                                    COMFY + "/view?" + query, timeout=90) as response, \
+                                    destination.open("wb") as handle:
+                                shutil.copyfileobj(response, handle)
+                            if not destination.is_file() or destination.stat().st_size == 0:
+                                raise RuntimeError("ComfyUI returned an empty video")
+                            # File must have actual playable frames, not simply an extension.
+                            quality.media_info(destination)
+                            with LOCK:
+                                updated = read_project(series_id)
+                                latest_episode = pick_episode(updated, episode_id)
+                                target = pick_scene(latest_episode, scene_id)
+                                safe_to_select = all(
+                                    str(target.get(field) or "") ==
+                                    str(scene.get(field) or "")
+                                    for field in (
+                                        "clip", "script", "prompt", "reference_asset_id",
+                                        "reference_image", "negative_prompt",
+                                        "narration", "dialogue_audio_rights_confirmed",
+                                        "drama_plan"))
+                                model_meta = workflow_profile_path(workflow_name)
+                                family = (
+                                    json.loads(model_meta.read_text("utf-8")).get("family", "custom")
+                                    if model_meta.is_file() else "custom")
+                                provenance = {
+                                    "backend": "ComfyUI",
+                                    "workflow": workflow_name,
+                                    "family": family,
+                                    "prompt_id": prompt_id, "seed": seed,
+                                    "reference_image": (
+                                        str(image_reference) if image_reference else ""),
+                                    "previous_frame": last_frame_info,
+                                    "dialogue_audio": dialogue_meta,
+                                    "audio_input_conditioned": dialogue_meta is not None,
+                                    "generated_at": now(),
+                                    "reviewed": False,
+                                }
+                                take = take_workspace.add_take(
+                                    DATA, series_id, episode_id, target, destination,
+                                    title="AI drama shot " +
+                                          str(target.get("number") or "") +
+                                          " · " + workflow_name,
+                                    rights="generated_unverified",
+                                    origin="ComfyUI",
+                                    notes="Review actor identity, lip sync, model license and storytelling",
+                                    provenance=provenance,
+                                    select=safe_to_select, move=True)
+                                if safe_to_select:
+                                    target["seed"] = seed
+                                    target["video_audio_contains_dialogue"] = bool(
+                                        dialogue_meta and take.get("has_audio"))
+                                    scene_workspace.invalidate(latest_episode)
+                                save_project(updated)
+                            if not safe_to_select:
+                                return ("New AI drama take saved as alternate " + take["id"] +
+                                        "; scene changed while the model was running")
+                            return str(take["path"])
+                        finally:
+                            # A successful take was moved to immutable managed storage.
+                            destination.unlink(missing_ok=True)
+            raise RuntimeError(
+                "ComfyUI returned no MP4/MOV/MKV/WebM video in the completed workflow. "
+                "The graph needs a real video-saving output node.")
+        raise TimeoutError("AI video generation exceeded one hour; inspect local ComfyUI queue")
+    finally:
+        if staged_audio is not None:
+            staged_audio.unlink(missing_ok=True)
 
 
 def generate_missing_episode_shots(series_id: str, episode_id: str,
