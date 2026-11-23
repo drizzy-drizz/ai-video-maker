@@ -29,6 +29,7 @@ import scene_workspace
 import take_workspace
 import revision_workspace
 import portable_workspace
+import music_workspace
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1056,6 +1057,80 @@ class AppHandler(BaseHTTPRequestHandler):
                                 project[key] = payload[key]
                         save_project(project)
                     return self.respond(project)
+            if len(parts) == 4 and parts[3] == "music" and method == "GET":
+                return self.respond(read_project(project_id).get("music_library") or [])
+            if len(parts) == 4 and parts[3] == "music" and method == "POST":
+                body = self.incoming()
+                with LOCK:
+                    series = read_project(project_id)
+                    track = music_workspace.import_track(
+                        DATA, series, Path(str(body.get("path") or "")),
+                        title=str(body.get("title") or ""),
+                        rights=str(body.get("rights") or ""),
+                        notes=str(body.get("notes") or "Imported local soundtrack"))
+                    save_project(series)
+                return self.respond(track, 201)
+            if len(parts) == 4 and parts[3] == "music-upload" and method == "POST":
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                field = lambda name: (query.get(name) or [""])[0]
+                suffix = Path(field("filename")).suffix.lower()
+                if suffix not in quality.AUDIO_EXTENSIONS:
+                    raise ValueError("Choose WAV, MP3, M4A, FLAC, OGG, OPUS or AAC audio")
+                if self.headers.get("Content-Type", "").split(";")[0] != "application/octet-stream":
+                    raise ValueError("Audio import requires a binary file upload")
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or shutil.disk_usage(DATA).free <= length + 64 * 1024 * 1024:
+                    raise ValueError("Missing audio upload or insufficient free disk space")
+                staging_dir = DATA / "upload-staging"
+                staging_dir.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=staging_dir, suffix=suffix, delete=False) as temp:
+                    staged = Path(temp.name)
+                    remaining = length
+                    while remaining:
+                        chunk = self.rfile.read(min(1024 * 1024, remaining))
+                        if not chunk:
+                            raise ValueError("Incomplete audio upload")
+                        temp.write(chunk)
+                        remaining -= len(chunk)
+                try:
+                    with LOCK:
+                        project = read_project(project_id)
+                        track = music_workspace.import_track(
+                            DATA, project, staged,
+                            title=field("title") or field("filename") or "Music",
+                            rights=field("rights"), notes=field("notes"), move=True)
+                        save_project(project)
+                    return self.respond(track, 201)
+                finally:
+                    staged.unlink(missing_ok=True)
+            if len(parts) == 5 and parts[3] == "music" and method == "GET":
+                series = read_project(project_id)
+                track = music_workspace.get_track(series, parts[4])
+                path_to_audio = Path(track["path"]).resolve()
+                owned_dir = (DATA / "music" / project_id).resolve()
+                if not path_to_audio.is_relative_to(owned_dir):
+                    raise ValueError("Music track is outside this project's managed audio library")
+                return self.serve_file(path_to_audio, {
+                    ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
+                    ".opus": "audio/ogg", ".m4a": "audio/mp4", ".aac": "audio/aac",
+                    ".flac": "audio/flac"
+                }[path_to_audio.suffix.lower()])
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "music-select" and method == "POST":
+                body = self.incoming()
+                with LOCK:
+                    project = read_project(project_id)
+                    episode = pick_episode(project, parts[4])
+                    if body.get("track_id"):
+                        track = music_workspace.choose_track(
+                            project, episode, str(body["track_id"]))
+                    else:
+                        episode["soundtrack"] = ""
+                        episode["soundtrack_track_id"] = ""
+                        episode["soundtrack_rights_confirmed"] = False
+                        track = {"id": "", "title": "No soundtrack"}
+                    scene_workspace.invalidate(episode)
+                    save_project(project)
+                return self.respond(track)
             if len(parts) == 4 and parts[3] == "backups" and method == "GET":
                 read_project(project_id)
                 folder = DATA / "backups" / project_id
