@@ -87,28 +87,75 @@ def validated_music(episode: dict) -> Path | None:
         raise ValueError("Music file does not contain usable audio")
     if not episode.get("soundtrack_rights_confirmed"):
         raise ValueError("Confirm you own or have permission to use this music before export")
+    soundtrack_settings(episode, info["duration"])
     return path
 
 
-def apply_soundtrack(assembled: Path, music: Path, duration: float, output: Path) -> None:
-    """Mix a user-licensed looping soundtrack at conservative gain beneath existing audio.
+def soundtrack_settings(episode: dict, music_duration: float) -> dict:
+    """User-controlled start position, gain, looping and fades with strict bounds."""
+    def numeric(field: str, default: float) -> float:
+        raw = episode.get(field)
+        try:
+            value = float(default if raw in (None, "") else raw)
+        except (ValueError, TypeError, OverflowError) as exc:
+            raise ValueError("Soundtrack " + field + " must be a number") from exc
+        if not math.isfinite(value):
+            raise ValueError("Soundtrack " + field + " must be finite")
+        return value
+    start = numeric("soundtrack_start_seconds", 0.0)
+    gain = numeric("soundtrack_gain", 0.12)
+    fade_in = numeric("soundtrack_fade_in_seconds", 0.0)
+    fade_out = numeric("soundtrack_fade_out_seconds", 1.0)
+    if start < 0 or start >= music_duration:
+        raise ValueError(
+            "Soundtrack start must be within the actual music file duration")
+    if not 0 <= gain <= 1:
+        raise ValueError("Soundtrack gain must be between 0 (muted) and 1")
+    if min(fade_in, fade_out) < 0 or max(fade_in, fade_out) > 30:
+        raise ValueError("Soundtrack fades must be 0–30 seconds")
+    return {
+        "start_seconds": start, "gain": gain, "fade_in": fade_in,
+        "fade_out": fade_out, "loop": episode.get("soundtrack_loop") is not False
+    }
 
-    Shared by BOTH actual moving-video exports and CPU motion storyboards.
+
+def apply_soundtrack(assembled: Path, music: Path, duration: float, output: Path,
+                     *, settings: dict | None = None) -> None:
+    """Mix licensed music from the chosen song point under real audio.
+
+    Same FFmpeg mix is used for actual footage and motion storyboards; presets
+    are saved per episode and do not require rebuilding a static 'recipe'.
     """
     if duration <= 0 or not math.isfinite(duration):
-        raise ValueError("Soundtrack duration must be a positive, finite number")
-    fade = min(1.0, duration / 4)
-    fade_start = max(0.0, duration - fade)
-    run_ffmpeg(["-i", str(assembled), "-stream_loop", "-1", "-i", str(music),
-                "-filter_complex",
-                f"[0:a:0]aresample=48000,apad[voice];"
-                f"[1:a:0]aresample=48000,volume=0.12,atrim=duration={duration:.3f},"
-                f"afade=t=out:st={fade_start:.3f}:d={fade:.3f}[music];"
-                "[voice][music]amix=inputs=2:duration=first:normalize=0,"
-                "alimiter=limit=0.95[mixed]",
-                "-map", "0:v:0", "-map", "[mixed]", "-c:v", "copy",
-                "-c:a", "aac", "-b:a", "160k", "-ar", "48000",
-                "-t", f"{duration:.3f}", "-movflags", "+faststart", str(output)])
+        raise ValueError("Soundtrack render duration must be positive and finite")
+    info = quality.media_info(music)
+    if not info["has_audio"]:
+        raise ValueError("Soundtrack file has no playable audio")
+    options = soundtrack_settings(settings or {}, info["duration"])
+    fade_in = min(options["fade_in"], duration)
+    fade_out = min(options["fade_out"], max(0, duration-fade_in))
+    filter_parts = [
+        "[0:a:0]aresample=48000,apad[voice]",
+        f"[1:a:0]aresample=48000,volume={options['gain']:.6f},"
+        f"atrim=duration={duration:.6f},apad"
+        + (f",afade=t=in:st=0:d={fade_in:.6f}" if fade_in else "")
+        + (f",afade=t=out:st={max(0,duration-fade_out):.6f}:d={fade_out:.6f}" if fade_out else "")
+        + "[music]",
+        "[voice][music]amix=inputs=2:duration=first:normalize=0,"
+        "alimiter=limit=0.95[mixed]"
+    ]
+    command = ["-i", str(assembled)]
+    if options["loop"]:
+        command += ["-stream_loop", "-1"]
+    if options["start_seconds"]:
+        command += ["-ss", f"{options['start_seconds']:.6f}"]
+    command += ["-i", str(music)]
+    run_ffmpeg(command + [
+        "-filter_complex", ";".join(filter_parts),
+        "-map", "0:v:0", "-map", "[mixed]", "-c:v", "copy",
+        "-c:a", "aac", "-b:a", "160k", "-ar", "48000",
+        "-t", f"{duration:.6f}", "-movflags", "+faststart", str(output)
+    ])
 
 
 def preflight_animatic(series: dict, episode: dict) -> dict:
@@ -210,7 +257,7 @@ def render_animatic(series: dict, episode: dict, data_root: Path) -> dict:
     prepared = folder / "pre-caption.mp4"
     soundtrack = validated_music(episode)
     if soundtrack:
-        apply_soundtrack(assembled, soundtrack, sum(durations), prepared)
+        apply_soundtrack(assembled, soundtrack, sum(durations), prepared, settings=episode)
     else:
         shutil.copy2(assembled, prepared)
     srt = export_dir / (episode_id + "-animatic.srt")
