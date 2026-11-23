@@ -490,16 +490,32 @@ def generate_scene_image(series_id: str, episode_id: str, scene_id: str,
     template = json.loads(workflow_path(workflow_name).read_text("utf-8"))
     canonical = quality.compose_canonical_prompt(series, episode, scene)
     graph_text = json.dumps(template)
+    if "{{DIALOGUE_AUDIO}}" in graph_text:
+        raise ValueError(
+            "Scene image generation requires a still-image workflow, not a "
+            "speech-driven video graph. Use Generate Drama Video for S2V.")
     reference = quality.reference_image_for_scene(series, scene) if "{{REFERENCE_IMAGE}}" in graph_text else None
     if "{{REFERENCE_IMAGE}}" in graph_text and not reference:
         raise ValueError("Image workflow requires an approved reference image, but no reference is assigned")
     reference_name = upload_reference_to_comfy(reference) if reference else ""
+    previous_name = ""
+    prior_image_info = None
+    if "{{PREVIOUS_FRAME}}" in graph_text:
+        previous, prior_image_info, remove_after = comfy_drama_bridge.previous_visual_reference(
+            series, episode, scene_id, DATA / "comfy-frame-staging" / series_id)
+        try:
+            previous_name = upload_reference_to_comfy(previous)
+        finally:
+            if remove_after:
+                previous.unlink(missing_ok=True)
     seed = int(uuid.uuid4().int % 2_147_483_647)
     prompt_graph = interpolate(template, {
         "{{PROMPT}}": canonical["prompt"],
         "{{NEGATIVE_PROMPT}}": scene.get("negative_prompt", ""),
         "{{SEED}}": seed,
-        "{{REFERENCE_IMAGE}}": reference_name
+        "{{REFERENCE_IMAGE}}": reference_name,
+        "{{PREVIOUS_FRAME}}": previous_name,
+        "{{DIALOGUE_TEXT}}": ""
     })
     result = request_json(COMFY + "/prompt", {
         "prompt": prompt_graph, "client_id": str(uuid.uuid4())
@@ -551,7 +567,8 @@ def generate_scene_image(series_id: str, episode_id: str, scene_id: str,
                             "workflow": workflow_name, "seed": seed,
                             "prompt_id": prompt_id, "prompt": canonical["prompt"][:3000],
                             "generated_at": now(), "model_license_reviewed": False,
-                            "reference_used": bool(reference)
+                            "reference_used": bool(reference),
+                            "previous_visual_conditioning": prior_image_info
                         }
                         unchanged = all(
                             str(active_scene.get(key) or "") == str(scene.get(key) or "")
