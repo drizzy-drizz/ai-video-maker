@@ -177,3 +177,17 @@
 .drama-audio-consent>strong{font-size:12px}
 .drama-audio-consent small{display:block;font-size:11px;color:var(--muted)}
 @media(max-width:690px){.drama-direction-grid{grid-template-columns:1fr}.drama-model-grid{grid-template-columns:1fr}}
+
+
+/* Independent spoken dialogue and human-reviewed Qwen screenplay proposals */
+.drama-voice-script{margin-top:14px;padding:13px;border:1px solid #567261;background:#152b27;border-radius:10px}
+.drama-voice-script>strong{font-size:12px;display:block;margin-bottom:8px}
+.drama-voice-script>label{display:block;color:var(--muted);font-size:11px}
+.drama-voice-script select,.drama-voice-script textarea{width:100%;display:block;margin:6px 0 10px;padding:10px;border:1px solid #487366;border-radius:9px;color:var(--text);background:#0e201c;font-size:12px;line-height:1.5}
+.drama-voice-script small{font-size:11px;color:var(--muted);display:block;margin:10px 0 0}
+.drama-voice-actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.screenplay-draft-panel{padding:15px;border-radius:10px;background:#262537;border:1px solid #70638a;margin:14px 0}
+.screenplay-draft-panel>strong{font-size:11px;display:block}
+.screenplay-draft-panel>blockquote{font-size:14px;font-style:italic;font-weight:600;border-left:3px solid #9b94ca;margin:10px 0;padding:9px 12px}
+.screenplay-draft-panel>p{font-size:12px;line-height:1.6}
+.screenplay-draft-panel>.button{margin:6px 8px 3px 0}
