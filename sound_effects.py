@@ -40,8 +40,8 @@ def validated_effects(scene: dict, scene_duration: float) -> list[dict]:
             raise ValueError(f"SFX {index} requires usage-rights confirmation")
         offset = _finite(raw.get("at_seconds", 0), "offset")
         gain = _finite(raw.get("gain", 0.30), "gain")
-        if not 0 <= offset < scene_duration:
-            raise ValueError(f"SFX {index} must start within the actual trimmed shot")
+        if not 0 <= offset < scene_duration or scene_duration-offset < 0.05:
+            raise ValueError(f"SFX {index} needs at least 0.05 seconds of room inside the trimmed shot")
         if not 0 <= gain <= 1.0:
             raise ValueError(f"SFX {index} gain must be between 0 and 1")
         info = quality.media_info(path)
