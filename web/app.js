@@ -529,6 +529,106 @@ function buildProductionControls(episode, scene, index) {
   };
   importBox.append(pickLabel, rightsLabel, takeName, upload, fromPath);
   root.appendChild(importBox);
+
+  const fxPanel = document.createElement("div");
+  fxPanel.className = "scene-sfx-panel";
+  const fxHeading = document.createElement("h4");
+  fxHeading.textContent = "Scene Sound Effects · Actual Timed Audio Mix";
+  const intro = document.createElement("p");
+  intro.className = "muted";
+  intro.textContent = "Place any number of rights-cleared sounds at real times inside this trimmed shot. The final video mix is handled by FFmpeg. Import clips to the shared Music Library first, or enter a local audio path.";
+  const fxRows = document.createElement("div");
+  scene.sound_effects = Array.isArray(scene.sound_effects) ? scene.sound_effects : [];
+  const drawEffects = () => {
+    fxRows.replaceChildren();
+    scene.sound_effects.forEach((fx, fxIndex) => {
+      const line = document.createElement("div");
+      line.className = "sfx-row";
+      const trackLabel = document.createElement("label");
+      trackLabel.textContent = "Source from licensed local audio library";
+      const trackSelect = document.createElement("select");
+      const blank = document.createElement("option");
+      blank.value = ""; blank.textContent = "Custom local path";
+      trackSelect.appendChild(blank);
+      (state.series.music_library || []).forEach(track => {
+        const opt = document.createElement("option");
+        opt.value = track.id; opt.textContent = track.title + " · " + track.duration + "s";
+        trackSelect.appendChild(opt);
+      });
+      trackSelect.value = fx.track_id || "";
+      trackSelect.onchange = e => {
+        const track = (state.series.music_library || []).find(item => item.id === e.target.value);
+        fx.track_id = track?.id || "";
+        if (track) {
+          fx.path = track.path;
+          fx.rights_confirmed = true;
+        }
+        state.dirty = true;
+        drawEffects();
+      };
+      trackLabel.appendChild(trackSelect);
+      const pathLabel = document.createElement("label");
+      pathLabel.textContent = "Local audio path";
+      const pathInput = document.createElement("input");
+      pathInput.placeholder = "C:\\Audio\\impact.wav";
+      pathInput.value = fx.path || "";
+      pathInput.oninput = e => {
+        fx.path = e.target.value;
+        fx.track_id = "";
+        fx.rights_confirmed = false;
+        state.dirty = true;
+      };
+      pathLabel.appendChild(pathInput);
+      const startLabel = document.createElement("label");
+      startLabel.textContent = "Start within shot (seconds)";
+      const at = document.createElement("input");
+      at.type = "number"; at.min = "0"; at.step = ".05";
+      at.value = fx.at_seconds ?? 0;
+      at.oninput = e => { fx.at_seconds = Number(e.target.value); state.dirty = true; };
+      startLabel.appendChild(at);
+      const gainLabel = document.createElement("label");
+      gainLabel.textContent = "Effect volume (0–1)";
+      const volume = document.createElement("input");
+      volume.type = "number"; volume.min = "0"; volume.max = "1"; volume.step = ".05";
+      volume.value = fx.gain ?? 0.30;
+      volume.oninput = e => { fx.gain = Number(e.target.value); state.dirty = true; };
+      gainLabel.appendChild(volume);
+      const rightsLabel = document.createElement("label");
+      rightsLabel.className = "voice-license";
+      const rights = document.createElement("input");
+      rights.type = "checkbox"; rights.checked = fx.rights_confirmed === true;
+      rights.onchange = e => { fx.rights_confirmed = e.target.checked; state.dirty = true; };
+      rightsLabel.append(rights, document.createTextNode(" I own or have permission to use this sound"));
+      const remove = document.createElement("button");
+      remove.className = "button ghost";
+      remove.textContent = "Remove sound cue";
+      remove.onclick = () => {
+        scene.sound_effects.splice(fxIndex, 1);
+        state.dirty = true; drawEffects();
+      };
+      line.append(trackLabel, pathLabel, startLabel, gainLabel, rightsLabel, remove);
+      if (fx.track_id) {
+        const player = document.createElement("audio");
+        player.controls = true; player.preload = "none";
+        player.className = "music-player";
+        player.src = "/api/series/" + state.series.id + "/music/" + fx.track_id;
+        line.appendChild(player);
+      }
+      fxRows.appendChild(line);
+    });
+  };
+  const addSfx = document.createElement("button");
+  addSfx.className = "button ghost";
+  addSfx.textContent = "Add Sound Effect Cue";
+  addSfx.onclick = () => {
+    scene.sound_effects.push({
+      path: "", track_id: "", at_seconds: 0, gain: .30, rights_confirmed: false
+    });
+    state.dirty = true; drawEffects();
+  };
+  drawEffects();
+  fxPanel.append(fxHeading, intro, fxRows, addSfx);
+  root.appendChild(fxPanel);
   return root;
 }
 
