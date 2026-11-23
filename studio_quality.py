@@ -126,6 +126,12 @@ def compose_canonical_prompt(series: dict, episode: dict, scene: dict) -> dict:
             if name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", source, re.I):
                 parts.append("Keep established location " + name[:100] + ": " +
                              str(location.get("description") or "")[:400])
+    plan = scene.get("drama_plan") or {}
+    if plan:
+        import drama_studio
+        if str(plan.get("source_script") or "").strip() != str(scene.get("script") or "").strip():
+            raise ValueError("Drama direction was based on older dialogue. Rebuild the Drama Board before generating video.")
+        parts.append(drama_studio.prompt_block(plan))
     parts.extend([
         f"Source story beat (preserve meaning): {str(scene.get('script') or '')[:2000]}",
         f"Shot director instruction: {str(scene.get('prompt') or '')[:2500]}",
