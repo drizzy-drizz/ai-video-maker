@@ -878,7 +878,15 @@ def render_episode(series_id: str, episode_id: str) -> str:
         source_info = quality.media_info(source)
         duration = edit["duration"]
         voice_delay_ms = round(edit["previous_overlap"] * 1000)
-        narration = quality.normalized_path(scene.get("narration"))
+        if scene.get("video_audio_contains_dialogue") and not source_info["has_audio"]:
+            raise ValueError(
+                "This scene is marked as containing generated dialogue, but the "
+                "selected video has no audio track. Select another take or turn "
+                "off embedded-dialogue mode and use the attached narration.")
+        # Speech-driven ComfyUI takes may already contain the full spoken audio:
+        # do not layer the original TTS file a second time over the actor.
+        narration = (None if scene.get("video_audio_contains_dialogue") else
+                     quality.normalized_path(scene.get("narration")))
         command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                    "-ss", f"{edit['source_start']:.6f}", "-i", str(source)]
         if narration:
@@ -900,7 +908,8 @@ def render_episode(series_id: str, episode_id: str) -> str:
         else:
             command += ["-map", "0:v:0", "-map",
                         "1:a:0" if narration or not source_info["has_audio"] else "0:a:0",
-                        "-af", f"aresample=48000,adelay={voice_delay_ms}:all=1,apad"]
+                        "-af", (f"aresample=48000,adelay={voice_delay_ms}:all=1,apad"
+                                if narration else "aresample=48000,apad")]
         command += ["-vf", video_filter, "-c:v", "libx264", "-crf", "21",
                     "-preset", "veryfast", "-c:a", "aac", "-b:a", "160k",
                     "-ar", "48000", "-ac", "2", "-t", f"{duration:.6f}", str(dest)]
