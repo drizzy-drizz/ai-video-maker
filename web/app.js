@@ -367,7 +367,8 @@ function buildProductionControls(episode, scene, index) {
     info.innerHTML = '<strong>' + escapeHtml(take.title) + ' · v' +
       escapeHtml(take.version) + (selected ? " · SELECTED" : "") +
       '</strong><small>' + escapeHtml(take.origin) + " · " +
-      escapeHtml(take.rights) + " · " + escapeHtml(take.duration) +
+      escapeHtml(take.rights) + (take.rights === "generated_unverified" &&
+        !take.approved_for_use ? " · REVIEW REQUIRED" : "") + " · " + escapeHtml(take.duration) +
       "s · " + escapeHtml(take.width) + "x" + escapeHtml(take.height) +
       '</small>';
     const actions = document.createElement("div");
@@ -387,6 +388,26 @@ function buildProductionControls(episode, scene, index) {
       }
     };
     actions.appendChild(preview);
+    if (take.rights === "generated_unverified" && !take.approved_for_use) {
+      const approve = document.createElement("button");
+      approve.className = "button ghost";
+      approve.textContent = "Review & approve video";
+      approve.onclick = async () => {
+        if (!window.confirm(
+          "Confirm you WATCHED this take and verified its model license, face/likeness rights and intended publishing use?"))
+          return;
+        try {
+          await saveSeries(false);
+          await api("/api/series/" + state.series.id + "/episodes/" +
+            episode.id + "/scenes/" + scene.id + "/approve-take", "POST", {
+              take_id: take.id, rights_confirmed: true
+            });
+          await loadSeries(state.series.id);
+          toast("Video take approved for use; review final episode export before publishing.");
+        } catch(error) { toast(error.message, true); }
+      };
+      actions.appendChild(approve);
+    }
     if (!selected) {
       const choose = document.createElement("button");
       choose.className = "button primary";
