@@ -37,7 +37,7 @@
 
         <section id="studioView" hidden>
           <div class="studio-intro"><div><div class="eyebrow">SERIES WORKSPACE</div><h1 id="studioTitle"></h1><p id="studioMeta"></p></div><div class="studio-actions"><button class="button ghost" id="copyScript">Copy Original Story</button><button class="button primary" id="saveSeries">Save Changes</button></div></div>
-          <div class="tabs"><button class="tab active" data-tab="episodes">Episodes + Shots</button><button class="tab" data-tab="bible">Series Bible</button><button class="tab" data-tab="assets">Asset Library</button><button class="tab" data-tab="source">Original Story</button></div>
+          <div class="tabs"><button class="tab active" data-tab="episodes">Episodes + Shots</button><button class="tab" data-tab="bible">Series Bible</button><button class="tab" data-tab="assets">Asset Library</button><button class="tab" data-tab="history">History / Recovery</button><button class="tab" data-tab="source">Original Story</button></div>
 
           <section id="episodeTab">
             <div class="workspace-layout">
@@ -68,6 +68,14 @@
               </form>
               <div class="section-header shot-heading"><div><div class="eyebrow">PINNED REFERENCES</div><h2>Approved image versions</h2></div></div>
               <div id="assetLibraryList" class="asset-library-list"></div>
+            </div>
+          </section>
+          <section id="historyTab" hidden>
+            <div class="editor-panel">
+              <div class="eyebrow">LOCAL / NON-DESTRUCTIVE</div><h2>Series History & Recovery</h2>
+              <p class="muted">Every meaningful saved project revision creates a small local JSON recovery snapshot. Restore a previous timeline or Series Bible without deleting original footage, voice files, or licensed assets. The current version is backed up before a restore. History keeps up to 60 snapshots, not copies of large video files.</p>
+              <button id="historyRefresh" class="button ghost">Refresh Revision History</button>
+              <div id="historyList" class="history-list"></div>
             </div>
           </section>
           <section id="sourceTab" hidden><div class="editor-panel"><div class="eyebrow">UNCHANGED SOURCE</div><h2>Your original storyline</h2><pre id="originalStory"></pre></div></section>
