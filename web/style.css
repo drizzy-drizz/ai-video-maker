@@ -70,3 +70,30 @@
 .shot-source-preview{width:100%;max-height:330px;object-fit:contain;background:#000;border-radius:8px}
 .shot-source-preview[hidden]{display:none}
 @media(max-width:650px){.timeline-grid{grid-template-columns:1fr}}
+
+
+/* Production workspace: independent takes, reversible shot edits, recovery history */
+.production-workspace{padding:15px;margin:16px 0;background:#10202b;border:1px solid #36556a;border-radius:12px}
+.production-workspace>strong{display:block;color:#cddcea;font-size:12px;letter-spacing:.05em}
+.production-workspace h4{font-size:12px;margin:17px 0 9px}
+.production-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:9px;align-items:end;margin:13px 0}
+.production-toolbar .button,.take-import .button{font-size:11px;white-space:normal}
+.production-toolbar label,.take-import label{font-size:11px;color:var(--muted);margin:0;display:block}
+.production-toolbar input,.take-import input,.take-import select{width:100%;display:block;min-width:0;background:#0c151f;border:1px solid #415668;border-radius:8px;padding:9px;margin:5px 0 0;color:var(--text)}
+.production-toolbar .button:last-child{border-color:#7c4e54;color:#ebc5c9}
+.take-row{padding:10px;border:1px solid #2b4755;border-radius:9px;background:#122a31;display:grid;gap:7px;margin:8px 0}
+.take-row strong{display:block;font-size:11px;overflow-wrap:anywhere}
+.take-row small{display:block;font-size:10px;color:var(--muted)}
+.take-actions{display:flex;flex-wrap:wrap;gap:8px}
+.take-import{padding:13px;border:1px solid #3a5264;border-radius:10px;margin-top:12px;display:grid;gap:10px}
+.archived-shots{margin:16px 0}
+.archived-shots>strong{font-size:12px;display:block;margin:7px 0}
+.archived-row{display:flex;gap:9px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:9px 0}
+.archived-row span{font-size:11px;flex:1;color:var(--muted);overflow-wrap:anywhere}
+.archived-row button{font-size:10px;white-space:nowrap}
+.history-list{display:grid;gap:10px;margin:16px 0}
+.history-row{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:13px;border:1px solid var(--line);border-radius:10px;background:#101b26}
+.history-row strong{display:block;font-size:12px}
+.history-row small{display:block;color:var(--muted);font-size:10px}
+.history-row button{flex:0 0 auto}
+@media(max-width:750px){.production-toolbar{grid-template-columns:1fr}.history-row{align-items:flex-start;flex-direction:column}.take-actions{gap:6px}}
