@@ -55,6 +55,14 @@ This is a general (all genres), Tagalog/English episodic film studio with no req
 - Effects exceeding the available scene tail receive a short fade rather than abrupt cutoff. Audio inputs are not modified.
 - Media preflight checks rights, path, offset, actual duration and gain. QA includes SFX count.
 
+## Additional edit-safety work from this coding batch
+
+- Studio project saves now send an expected updated_at revision. If a background job has modified the stored series, the server rejects the stale overwrite with an HTTP 409 and preserves the user's unsaved browser edits for manual reconciliation.
+- Real creative changes (cuts, story dialogue, prompts, Bible, soundtrack/SFX, caption decisions, format) invalidate the old render status. Previously playable videos remain available but are visibly labelled Previous/Outdated; a fresh render is required before publishing.
+- Splitting scenes now partitions shot-local SFX by real time as well as captions; any effect crossing the split boundary blocks instead of being clipped or duplicated.
+- Full imported music is included under its own per-series managed directory in portable ZIP archives.
+- The user has explicitly requested NO repetitive automated tests or compilation while developing these integrated feature groups. Keep this pending-verification distinction visible.
+
 ## Existing features kept
 
 - Source-preserving story planner, editable episodes and shot prompts, Series Bible, approved image references.
