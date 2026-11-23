@@ -252,7 +252,8 @@ def episode_preflight(series: dict, episode: dict) -> dict:
         if embedded_dialogue:
             add("advisory", "verify_lip_sync",
                 "Generated speaking video audio must be listened to and lip sync manually checked", num)
-        narration = None if embedded_dialogue else normalized_path(scene.get("narration"))
+        narration = (None if embedded_dialogue or scene.get("voice_mode") == "silent"
+                     else normalized_path(scene.get("narration")))
         if narration:
             if not narration.is_file() or narration.suffix.lower() not in AUDIO_EXTENSIONS:
                 add("blocker", "missing_narration", "Narration path is missing or unsupported", num)
