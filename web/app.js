@@ -163,6 +163,25 @@ function renderAssets() {
       "</p><small>SHA256: " + escapeHtml(asset.sha256.slice(0, 16)) +
       "… · pinned version" + (asset.parent_asset_id ? " (replaces previous asset)" : "") + "</small>";
     row.append(picture, caption);
+    if (asset.rights === "generated_unverified" && !asset.approved_for_use) {
+      const approve = document.createElement("button");
+      approve.className = "button ghost";
+      approve.textContent = "Review rights & approve draft";
+      approve.onclick = async () => {
+        if (!window.confirm(
+          "Have you reviewed image quality and confirmed generating model, reference, and intended-usage rights?"))
+          return;
+        try {
+          await saveSeries(false);
+          await api("/api/series/" + state.series.id +
+            "/assets/" + asset.id + "/approve", "POST", {rights_confirmed: true});
+          await loadSeries(state.series.id);
+          document.querySelector('[data-tab="assets"]').click();
+          toast("Generated image approved; available to pin to any shot.");
+        } catch(error) { toast(error.message, true); }
+      };
+      row.appendChild(approve);
+    }
     list.appendChild(row);
   });
   if (!(project.assets || []).length) list.innerHTML = '<p class="muted">Import your first original or licensed image above.</p>';
@@ -269,6 +288,60 @@ function buildProductionControls(episode, scene, index) {
   };
   commands.append(duplicate, splitOffsetLabel, splitWordLabel, split, archive);
   root.append(title, commands);
+
+  const imgTitle = document.createElement("h4");
+  imgTitle.textContent = "AI-generated scene images — local ComfyUI";
+  const imageReview = document.createElement("div");
+  imageReview.className = "draft-image-review";
+  const draft = (state.series.assets || []).find(a => a.id === scene.generated_image_asset_id);
+  if (draft) {
+    const image = document.createElement("img");
+    image.src = "/api/assets/" + state.series.id + "/" + draft.id;
+    image.alt = "Image candidate for review";
+    image.loading = "lazy";
+    const label = document.createElement("p");
+    label.className = "muted";
+    label.textContent = "Image candidate · " + draft.id + " · " +
+      (draft.approved_for_use ? "Approved for use" : "Needs model/rights review");
+    imageReview.append(image, label);
+    if (scene.reference_asset_id !== draft.id) {
+      const accept = document.createElement("button");
+      accept.className = "button primary";
+      accept.textContent = "Review & Pin This Image";
+      accept.onclick = async () => {
+        if (!window.confirm(
+          "Confirm you reviewed the image, model license, original sources and intended use?"))
+          return;
+        try {
+          await saveSeries(false);
+          await api("/api/series/" + state.series.id +
+            "/episodes/" + episode.id + "/scenes/" + scene.id +
+            "/approve-image", "POST", {asset_id: draft.id, rights_confirmed: true});
+          await loadSeries(state.series.id);
+          toast("Approved still is now pinned to this shot for real I2V or a CPU motion storyboard.");
+        } catch(error) { toast(error.message, true); }
+      };
+      imageReview.appendChild(accept);
+    }
+  }
+  const generate = document.createElement("button");
+  generate.className = "button ghost";
+  generate.textContent = draft ? "Generate another still draft" : "Generate scene image (local)";
+  generate.onclick = async () => {
+    const workflow = byId("workflowSelect").value;
+    if (!workflow) return toast("Install a ComfyUI image-output SaveImage workflow first.", true);
+    try {
+      await saveSeries(false);
+      const queued = await api("/api/series/" + state.series.id +
+        "/episodes/" + episode.id + "/scenes/" + scene.id +
+        "/generate-image", "POST", {workflow});
+      state.jobs[queued.job_id] = "queued";
+      toast("Local image generation queued; output remains a draft until user approval.");
+      refreshJobs();
+    } catch(error) { toast(error.message, true); }
+  };
+  imageReview.appendChild(generate);
+  root.append(imgTitle, imageReview);
 
   const takeTitle = document.createElement("h4");
   takeTitle.textContent = "Approved footage takes — keep every version";
@@ -469,6 +542,23 @@ function renderEpisodes() {
     } catch(error) { toast(error.message, true); }
   };
   head.appendChild(batchVideo);
+  const imageBatch = document.createElement("button");
+  imageBatch.className = "button ghost";
+  imageBatch.style.margin = "10px 0 0 10px";
+  imageBatch.textContent = "Generate Missing Scene Images (Drafts)";
+  imageBatch.onclick = async () => {
+    const workflow = byId("workflowSelect").value;
+    if (!workflow) return toast("Install a compatible local ComfyUI SaveImage workflow first.", true);
+    try {
+      await saveSeries(false);
+      const result = await api("/api/series/" + state.series.id +
+        "/episodes/" + episode.id + "/generate-missing-images", "POST", {workflow});
+      state.jobs[result.job_id] = "queued";
+      toast("Image generation batch queued. New images are reviewable drafts, not automatically approved references.");
+      refreshJobs();
+    } catch(error) { toast(error.message, true); }
+  };
+  head.appendChild(imageBatch);
   const batchHelp = document.createElement("p");
   batchHelp.className = "muted";
   batchHelp.style.fontSize = "11px";
@@ -706,7 +796,9 @@ function renderEpisodes() {
     (state.series.assets || []).forEach(asset => {
       const opt = document.createElement("option");
       opt.value = asset.id;
-      opt.textContent = asset.title + " · v" + asset.version;
+      opt.textContent = asset.title + " · v" + asset.version +
+        (asset.rights === "generated_unverified" && !asset.approved_for_use ? " · APPROVAL REQUIRED" : "");
+      opt.disabled = asset.rights === "generated_unverified" && !asset.approved_for_use;
       imageSelector.appendChild(opt);
     });
     imageSelector.value = scene.reference_asset_id || "";
