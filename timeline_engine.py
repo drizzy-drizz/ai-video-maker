@@ -133,7 +133,10 @@ def plan_episode(series: dict, episode: dict) -> dict:
     # narration until the crossfade completes so its leading words are audible.
     for index, (item, scene) in enumerate(zip(result["entries"], scenes), 1):
         from caption_engine import validate_manual_cues
-        voice = quality.normalized_path(scene.get("narration"))
+        voice = (None if scene.get("video_audio_contains_dialogue") else
+                 quality.normalized_path(scene.get("narration")))
+        if scene.get("video_audio_contains_dialogue") and not item["source_audio"]:
+            raise ValueError(f"Shot {index}: embedded dialogue flag requires a real video audio stream")
         if voice:
             if not voice.is_file() or voice.suffix.lower() not in quality.AUDIO_EXTENSIONS:
                 raise ValueError(f"Shot {index}: narration file is missing/unsupported")
