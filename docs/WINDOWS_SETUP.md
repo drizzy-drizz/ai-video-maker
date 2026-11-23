@@ -45,6 +45,20 @@ The exact full-media regression and install requirements are documented in [Edit
 - At the episode level select sidecar SRT or **Burn captions into final MP4**. The same cues are used for both the subtitle file and video burn-in. Burn-in requires FFmpeg libass and causes a final re-encode.
 - This is a full editor/export integration, **not** a claim that models are preinstalled or the Filipino/English speech generated on the user's machine has been human-validated.
 
+## Coding-first workspace additions (not yet release-validated)
+
+This phase is explicitly focused on implementing features before running the consolidated test/build cycle. **Application CI and Windows packaging are temporarily manual-trigger only. Do not treat previous Windows EXE artifacts as containing the newest features.** Read the [current handoff](CODING_FIRST_CONTINUATION_2026_11_23.md) for exact status and deferred acceptance steps.
+
+Use Episodes + Shots to Duplicate, Split or Archive/Restore a scene. Splits require a time within the trimmed shot and a script word boundary. Manually timed captions and sound effects are rebased safely; crossing cues or existing narration block the split rather than discarding sound. A scene can have unlimited-version video takes, previews, approval and alternate take selection.
+
+For real-model production, choose a compatible local ComfyUI API workflow. The new episode controls can generate missing videos or generate still-image drafts, retaining each output. Model-generated assets require user quality and rights approval before using them in a finished export. The GTX 750 cannot practically run modern high-end video diffusion.
+
+Music and sound: The episode has a local audio import picker, a reusable rights-cleared music library, song start position, gain, loop and fades; every scene has editable timed SFX cues that use library tracks or user-provided audio paths. Actual mix outputs are produced by FFmpeg during real-video or CPU-storyboard render.
+
+History/Recovery stores recent project JSON revisions; Portable Project Backup writes a full media .aivm.zip. Importing restores into a different series ID instead of overwriting your existing work. ZIP contains referenced media, **not external model checkpoints or installed programs**.
+
+**These paths have been integrated into code but have not undergone this batch's full tests or Windows builds**, per user request.
+
 ## Complete CPU motion-storyboard workflow
 
 This is **an actual video file made by animating existing still images**, not an AI video generator. It runs on CPU with standard FFmpeg; it is intended for concept/episode preview and optional stylized faceless videos.
