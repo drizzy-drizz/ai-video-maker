@@ -273,7 +273,15 @@ def gpu_preflight() -> dict:
 
 def health() -> dict:
     comfy_running = reachable(COMFY + "/system_stats")
+    comfy_input = os.environ.get("AIVM_COMFY_INPUT_DIR", "").strip()
+    comfy_input_ready = bool(comfy_input and Path(comfy_input).expanduser().is_dir())
     return {"ffmpeg": bool(shutil.which("ffmpeg") and shutil.which("ffprobe")),
+            "drama_audio_input": {
+                "configured": comfy_input_ready,
+                "note": ("Local ComfyUI shared audio input configured; verify selected LoadAudio node"
+                         if comfy_input_ready else
+                         "Speech-to-video requires AIVM_COMFY_INPUT_DIR pointing to the SAME local ComfyUI input folder")
+            },
             "ollama": reachable(OLLAMA + "/api/tags"),
             "comfyui": comfy_running,
             "comfyui_note": "ComfyUI connected; compatible video model and VRAM not verified." if comfy_running
