@@ -18,6 +18,7 @@ from pathlib import Path
 import asset_library
 import studio_quality as quality
 import caption_engine
+import sound_effects
 
 MOTIONS = {"zoom_in", "zoom_out", "pan_left", "pan_right", "still"}
 FPS = 24
@@ -183,6 +184,7 @@ def preflight_animatic(series: dict, episode: dict) -> dict:
                 raise ValueError("Invalid camera motion")
             caption_engine.validate_manual_cues(scene.get("caption_cues") or [],
                                                 math.ceil(duration * FPS) / FPS)
+            sound_effects.validated_effects(scene, math.ceil(duration * FPS) / FPS)
             expected += math.ceil(duration * FPS) / FPS
         except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
             issues.append({"scene": i, "message": str(exc)})
@@ -222,6 +224,10 @@ def _scene_segment(series: dict, scene: dict, filename: Path, width: int, height
         run_ffmpeg(inputs + ["-map", "0:v:0", "-map", "1:a:0", "-af", "aresample=48000,apad",
                              "-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-ac", "2",
                              "-b:a", "160k", "-t", f"{duration:.6f}", str(filename)])
+        if scene.get("sound_effects"):
+            effects_file = filename.with_name(filename.stem + "-effects.mp4")
+            sound_effects.mix_scene_effects(filename, scene, duration, effects_file)
+            os.replace(effects_file, filename)
         return quality.media_info(filename)["duration"]
     finally:
         silent_video.unlink(missing_ok=True)
@@ -274,6 +280,10 @@ def render_animatic(series: dict, episode: dict, data_root: Path) -> dict:
         "estimated_subtitle_timing": caption_stats["estimated_cues"] > 0,
         "scene_count": len(clips),
         "music_included": bool(soundtrack),
+        "scene_sfx_count": sum(len(scene.get("sound_effects") or []) for scene in episode["scenes"]),
+        "soundtrack_settings": (
+            soundtrack_settings(episode, quality.media_info(soundtrack)["duration"])
+            if soundtrack else None),
         "narration_scene_count": sum(bool(scene.get("narration")) for scene in episode["scenes"])
     })
     qa_path = export_dir / (episode_id + "-animatic-quality.json")
