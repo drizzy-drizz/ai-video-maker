@@ -1009,7 +1009,8 @@ def render_episode(series_id: str, episode_id: str) -> str:
                 "off embedded-dialogue mode and use the attached narration.")
         # Speech-driven ComfyUI takes may already contain the full spoken audio:
         # do not layer the original TTS file a second time over the actor.
-        narration = (None if scene.get("video_audio_contains_dialogue") else
+        narration = (None if scene.get("video_audio_contains_dialogue") or
+                      scene.get("voice_mode") == "silent" else
                      quality.normalized_path(scene.get("narration")))
         command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                    "-ss", f"{edit['source_start']:.6f}", "-i", str(source)]
@@ -1116,6 +1117,8 @@ def voice_text_for_scene(scene: dict) -> str:
     Script and moving-shot prompt are unaffected; no model is allowed to
     silently invent dialogue. An empty override keeps legacy narration behavior.
     """
+    if scene.get("voice_mode") == "silent":
+        raise ValueError("Silent action shot has no speech; switch voice mode to Narrate before generating TTS")
     spoken = str(scene.get("voice_script") or "").strip()
     fallback = str(scene.get("script") or "").strip()
     text = spoken or fallback
@@ -1164,6 +1167,9 @@ def generate_episode_voices(series_id: str, episode_id: str, engine: str,
     missing = []
     skipped = 0
     for scene in episode["scenes"]:
+        if scene.get("voice_mode") == "silent":
+            skipped += 1
+            continue  # Intentional silent-action shot; no redundant AI narration.
         current = scene.get("narration")
         if current and Path(current).is_file():
             skipped += 1
