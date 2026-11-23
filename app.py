@@ -39,6 +39,7 @@ DATA.mkdir(parents=True, exist_ok=True)
 LOCK = threading.RLock()
 RENDER_LOCK = threading.Lock()  # Serialize CPU-heavy episode exports; do not corrupt temp clips.
 VOICE_LOCK = threading.Lock()   # Prevent concurrent CPU-heavy local voice inference jobs.
+GENERATION_LOCK = threading.Lock()  # Serialize local model generation batches and single-shot requests.
 JOBS: dict[str, dict] = {}
 EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm"}
 COMFY = os.environ.get("AIVM_COMFY_URL", "http://127.0.0.1:8188").rstrip("/")
@@ -346,6 +347,15 @@ def post_job(job_type: str, func, *args) -> str:
             elif job_type in ("offline-voice", "episode-narration"):
                 with VOICE_LOCK:
                     output = func(*args)
+            elif job_type in ("video-generation", "episode-video"):
+                with GENERATION_LOCK:
+                    if job_type == "episode-video":
+                        def progress(detail):
+                            with LOCK:
+                                JOBS[job_id]["detail"] = str(detail)[:400]
+                        output = func(*args, progress=progress)
+                    else:
+                        output = func(*args)
             else:
                 output = func(*args)
             with LOCK:
@@ -448,6 +458,52 @@ def generate_scene(series_id: str, episode_id: str, scene_id: str, workflow_name
                     return str(take["path"])
         raise RuntimeError("ComfyUI finished but returned no MP4/WebM/MOV video; use a video-saving node")
     raise TimeoutError("ComfyUI generation exceeded 60 minutes; inspect queue and retry manually")
+
+
+def generate_missing_episode_shots(series_id: str, episode_id: str,
+                                   workflow_name: str, progress=None) -> str:
+    """Generate only missing real footage. Checkpoint every successful take.
+
+    This is an idempotent, resumable GPU job: a retry skips footage already
+    attached. No fake slideshow substitution and no blanket "completed" claim
+    when ComfyUI fails mid-episode. Every generated take remains independently
+    versioned; edits while rendering prevent stale footage from replacing it.
+    """
+    project = read_project(series_id)
+    planned = pick_episode(project, episode_id)
+    candidates = [
+        str(scene["id"]) for scene in planned["scenes"]
+        if not scene.get("clip") or not Path(str(scene["clip"])).is_file()
+    ]
+    if not candidates:
+        return "Every scene already has attached moving footage. Nothing regenerated."
+    generated, skipped, saved_alternates = 0, 0, 0
+    total = len(candidates)
+    for index, scene_id in enumerate(candidates, 1):
+        fresh = read_project(series_id)
+        current = pick_scene(pick_episode(fresh, episode_id), scene_id)
+        if current.get("clip") and Path(str(current["clip"])).is_file():
+            skipped += 1
+            continue
+        if progress:
+            progress(f"Generating scene {index}/{total}: {str(current.get('script') or '')[:100]}")
+        try:
+            outcome = generate_scene(series_id, episode_id, scene_id, workflow_name)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Batch stopped at scene {index}/{total} ({scene_id}): {exc}. "
+                f"{generated} selected moving takes remain saved; "
+                "rerun batch to resume missing scenes without overwriting them.") from exc
+        if "alternate take" in outcome:
+            saved_alternates += 1
+        else:
+            generated += 1
+        if progress:
+            progress(f"Saved {generated}/{total} selected shots; "
+                     f"{saved_alternates} alternate takes preserved")
+    return (f"Episode video batch finished: {generated} selected new moving shots, "
+            f"{skipped} already supplied, {saved_alternates} alternate takes "
+            "saved without overriding concurrent user edits.")
 
 
 def ai_direct_episode(series_id: str, episode_id: str) -> str:
@@ -1043,6 +1099,17 @@ class AppHandler(BaseHTTPRequestHandler):
                 episode = pick_episode(series, parts[4])
                 scene = pick_scene(episode, parts[6])
                 return self.respond(quality.compose_canonical_prompt(series, episode, scene))
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "generate-missing" and method == "POST":
+                project_id, episode_id = parts[2], parts[4]
+                pick_episode(read_project(project_id), episode_id)
+                body = self.incoming()
+                workflow = safe_workflow_name(str(body.get("workflow") or ""))
+                if not workflow_path(workflow).is_file():
+                    raise ValueError("Install a local ComfyUI API workflow first")
+                return self.respond({
+                    "job_id": post_job("episode-video", generate_missing_episode_shots,
+                                       project_id, episode_id, workflow)
+                }, 202)
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "direct" and method == "POST":
                 project_id, episode_id = parts[2], parts[4]
                 pick_episode(read_project(project_id), episode_id)
