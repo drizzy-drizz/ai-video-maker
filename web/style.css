@@ -124,3 +124,16 @@
 .portable-backup-panel{margin-top:24px;border-top:1px solid var(--line);padding-top:18px}
 .portable-backup-panel .button{margin:8px 6px 8px 0}
 @media(max-width:800px){.music-import{grid-template-columns:1fr}.music-parameters{grid-template-columns:1fr}}
+
+
+/* Real scene sound effect tracks, reused from the licensed local audio library */
+.scene-sfx-panel{margin-top:16px;border-top:1px solid #405566;padding-top:14px}
+.scene-sfx-panel>p{font-size:11px;line-height:1.6}
+.scene-sfx-panel>.button{margin:7px 0}
+.sfx-row{margin:11px 0;padding:12px;background:#152333;border:1px solid #384a63;border-radius:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.sfx-row label{font-size:11px;color:var(--muted)}
+.sfx-row input:not([type=checkbox]),.sfx-row select{width:100%;min-width:0;display:block;margin-top:6px;padding:9px;color:var(--text);background:#0b1624;border:1px solid #354b5f;border-radius:8px}
+.sfx-row .voice-license{grid-column:1/-1}
+.sfx-row .button{grid-column:1/-1;justify-self:start}
+.sfx-row audio{grid-column:1/-1}
+@media(max-width:650px){.sfx-row{grid-template-columns:1fr}}
