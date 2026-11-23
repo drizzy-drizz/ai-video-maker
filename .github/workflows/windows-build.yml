@@ -1,12 +1,7 @@
 name: Windows desktop build
 on:
+  # Coding-first phase: package only when the user starts consolidated acceptance.
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '**/*.py'
-      - 'web/**'
-      - '.github/workflows/windows-build.yml'
 concurrency:
   group: windows-package-${{ github.ref }}
   cancel-in-progress: true
