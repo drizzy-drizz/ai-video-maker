@@ -1075,6 +1075,22 @@ def render_episode(series_id: str, episode_id: str) -> str:
     return str(target)
 
 
+def voice_text_for_scene(scene: dict) -> str:
+    """Explicit human-authored spoken dialogue overrides generic scene narration.
+
+    Script and moving-shot prompt are unaffected; no model is allowed to
+    silently invent dialogue. An empty override keeps legacy narration behavior.
+    """
+    spoken = str(scene.get("voice_script") or "").strip()
+    fallback = str(scene.get("script") or "").strip()
+    text = spoken or fallback
+    if not text:
+        raise ValueError("Scene has no source narration or spoken dialogue for local TTS")
+    if len(text) > voice_engine.MAX_CHARS:
+        raise ValueError("Spoken scene text exceeds installed voice engine input limit")
+    return text
+
+
 def generate_scene_voice(series_id: str, episode_id: str, scene_id: str,
                          engine: str, rights_confirmed: bool) -> str:
     """Create one local voice WAV and attach it only if source text still matches."""
@@ -1083,12 +1099,15 @@ def generate_scene_voice(series_id: str, episode_id: str, scene_id: str,
         scene = copy.deepcopy(pick_scene(pick_episode(project, episode_id), scene_id))
     directory = DATA / "narrations" / series_id / episode_id
     destination = directory / (scene_id + "-" + uuid.uuid4().hex[:12] + ".wav")
-    result = voice_engine.generate_wav(scene["script"], project["language"], engine,
+    spoken_text = voice_text_for_scene(scene)
+    result = voice_engine.generate_wav(spoken_text, project["language"], engine,
                                        destination, rights_confirmed)
+    result["spoken_text_source"] = "human_override" if scene.get("voice_script") else "scene_script"
     with LOCK:
         updated = read_project(series_id)
         target = pick_scene(pick_episode(updated, episode_id), scene_id)
         if (target["script"] != scene["script"] or
+                str(target.get("voice_script") or "") != str(scene.get("voice_script") or "") or
                 str(target.get("narration") or "") != str(scene.get("narration") or "")):
             destination.unlink(missing_ok=True)
             raise RuntimeError("Scene text or narration changed during speech generation; audio not attached. Re-run with the latest scene.")
@@ -1121,9 +1140,13 @@ def generate_episode_voices(series_id: str, episode_id: str, engine: str,
         for scene in missing:
             folder = DATA / "narrations" / series_id / episode_id
             target = folder / (scene["id"] + "-" + uuid.uuid4().hex[:12] + ".wav")
+            spoken_text = voice_text_for_scene(scene)
             result = voice_engine.generate_wav(
-                scene["script"], project["language"], engine, target, rights_confirmed)
+                spoken_text, project["language"], engine, target, rights_confirmed)
+            result["spoken_text_source"] = (
+                "human_override" if scene.get("voice_script") else "scene_script")
             created.append({"scene_id": scene["id"], "script": scene["script"],
+                            "voice_script": str(scene.get("voice_script") or ""),
                             "previous_narration": scene.get("narration") or "",
                             "output": result, "target": target})
         with LOCK:
@@ -1133,6 +1156,7 @@ def generate_episode_voices(series_id: str, episode_id: str, engine: str,
             for item in created:
                 now_scene = pick_scene(final_episode, item["scene_id"])
                 if (now_scene["script"] != item["script"] or
+                        str(now_scene.get("voice_script") or "") != item["voice_script"] or
                         str(now_scene.get("narration") or "") != item["previous_narration"]):
                     raise RuntimeError(
                         "Series was edited during episode narration; no generated voice was attached.")
