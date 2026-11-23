@@ -2,6 +2,8 @@
 
 Repo: https://github.com/drizzy-drizz/ai-video-maker — default branch main.
 
+**IMPORTANT: NEW CURRENT HANDOFF** — [Coding-first production workspace continuation](CODING_FIRST_CONTINUATION_2026_11_23.md) supersedes older feature/test status below. It records new retakes, image generation drafts, reversible shot editing, music/SFX, media packaging, and the user's request to defer tests/compiles. GitHub workflows are now manual-trigger only; old successful CI was before this coding batch.
+
 ## Goal, nonnegotiables
 Build a **general** (no horror-only presets) **Tagalog + English** episodic faceless filmmaking Windows application. Paste an original storyline, preserve it, plan unlimited episodes, enforce character and story canon, generate authentic moving shots with local open models on suitable GPUs, and deliver watchable Facebook reels. No required paid API or cloud, nor dishonest equivalence between free weights and free GPU compute.
 
