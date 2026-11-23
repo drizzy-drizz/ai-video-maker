@@ -34,6 +34,7 @@ import sound_effects
 import drama_studio
 import comfy_drama_bridge
 import drama_production
+import drama_ai
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -410,6 +411,11 @@ def post_job(job_type: str, func, *args) -> str:
                         output = func(*args, progress=progress)
                     else:
                         output = func(*args)
+            elif job_type == "drama-ai":
+                def progress(detail):
+                    with LOCK:
+                        JOBS[job_id]["detail"] = str(detail)[:400]
+                output = func(*args, progress=progress)
             elif job_type in ("project-backup", "project-import"):
                 def progress(detail):
                     with LOCK:
@@ -460,6 +466,43 @@ def rebuild_drama_board(series_id: str, episode_id: str,
         scene_workspace.invalidate(episode)
         save_project(series)
     return {**result, "board": board}
+
+
+def suggest_drama_acting(series_id: str, episode_id: str, progress=None) -> str:
+    """Qwen via installed Ollama suggests ONLY unapproved acting modifications."""
+    with LOCK:
+        original = read_project(series_id)
+        episode = copy.deepcopy(pick_episode(original, episode_id))
+    model_name = os.environ.get("AIVM_OLLAMA_MODEL", "qwen3:4b")
+    def infer(prompt: str) -> str:
+        result = request_json(OLLAMA + "/api/generate", {
+            "model": model_name, "prompt": prompt,
+            "stream": False, "format": "json", "think": False,
+            "options": {"temperature": 0.30, "num_predict": 4096}
+        }, timeout=1800)
+        return str(result.get("response") or "")
+    candidates = drama_ai.propose_episode(
+        original, episode, call_local_llm=infer,
+        model_name=model_name, progress=progress)
+    with LOCK:
+        latest = read_project(series_id)
+        current = pick_episode(latest, episode_id)
+        reference = {scene["id"]: scene for scene in episode["scenes"]}
+        if [scene["id"] for scene in current["scenes"]] != [
+                scene["id"] for scene in episode["scenes"]]:
+            raise RuntimeError("Shot order changed while Qwen was working. No suggestions were applied.")
+        for scene in current["scenes"]:
+            initial = reference[scene["id"]]
+            if (scene.get("script") != initial.get("script") or
+                    scene.get("drama_plan") != initial.get("drama_plan")):
+                raise RuntimeError(
+                    "Manual acting directions or source dialogue changed while Qwen "
+                    "was working. No stale AI suggestions were attached.")
+        for scene, proposal in zip(current["scenes"], candidates):
+            scene["drama_ai_suggestion"] = proposal
+        save_project(latest)
+    return (str(len(candidates)) + " acting suggestions saved for HUMAN REVIEW. "
+            "No source script or approved shooting direction was overwritten.")
 
 
 def produce_drama_episode(series_id: str, episode_id: str,
@@ -1621,6 +1664,14 @@ class AppHandler(BaseHTTPRequestHandler):
                 return self.respond({
                     "job_id": post_job("episode-drama", produce_drama_episode,
                                        parts[2], parts[4], cinematic, talking)
+                }, 202)
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "drama-suggest" and method == "POST":
+                series = read_project(parts[2])
+                pick_episode(series, parts[4])
+                self.incoming()
+                return self.respond({
+                    "job_id": post_job("drama-ai", suggest_drama_acting,
+                                       parts[2], parts[4])
                 }, 202)
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "drama-board" and method == "GET":
                 project = read_project(parts[2])
