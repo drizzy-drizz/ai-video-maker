@@ -114,6 +114,9 @@ def activate_take(scene: dict, take_id: str, *, trusted: bool = False) -> dict:
         valid = False
     scene["selected_take_id"] = take_id
     scene["clip"] = selected["path"]
+    scene["video_audio_contains_dialogue"] = bool(
+        selected.get("has_audio") and
+        (selected.get("provenance") or {}).get("audio_input_conditioned"))
     if not valid:
         scene["trim_start_seconds"] = 0.0
         scene["trim_end_seconds"] = ""
