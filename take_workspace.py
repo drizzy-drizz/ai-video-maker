@@ -101,10 +101,26 @@ def activate_take(scene: dict, take_id: str, *, trusted: bool = False) -> dict:
         validate_video(path)
         if file_digest(path) != selected["sha256"]:
             raise ValueError("Video take checksum changed; import a new version instead")
+    previous_start = scene.get("trim_start_seconds")
+    previous_end = scene.get("trim_end_seconds")
+    try:
+        begin = float(previous_start or 0)
+        finish = float(previous_end) if previous_end not in (None, "") else float(selected["duration"])
+        valid = (begin >= 0 and finish > begin + 0.35 and
+                 finish <= float(selected["duration"]) + 0.035)
+    except (ValueError, TypeError, OverflowError):
+        valid = False
     scene["selected_take_id"] = take_id
     scene["clip"] = selected["path"]
-    scene["trim_start_seconds"] = 0.0
-    scene["trim_end_seconds"] = ""
+    if not valid:
+        scene["trim_start_seconds"] = 0.0
+        scene["trim_end_seconds"] = ""
+        scene["take_selection_notice"] = (
+            "Previous trim was outside this take's duration; trim reset to full take. "
+            "Old edit decisions remain available via Project History.")
+    else:
+        scene["take_selection_notice"] = (
+            "Existing trim positions preserved for this take; review the content in source preview.")
     scene["provenance"] = selected.get("provenance") or {
         "backend": selected["origin"], "take_id": take_id
     }
