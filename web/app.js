@@ -273,6 +273,12 @@ function buildProductionControls(episode, scene, index) {
   const takeTitle = document.createElement("h4");
   takeTitle.textContent = "Approved footage takes — keep every version";
   root.appendChild(takeTitle);
+  if (scene.take_selection_notice) {
+    const notice = document.createElement("p");
+    notice.className = "muted";
+    notice.textContent = scene.take_selection_notice;
+    root.appendChild(notice);
+  }
   const takes = (scene.takes || []);
   if (!takes.length) {
     const note = document.createElement("p");
@@ -445,6 +451,29 @@ function renderEpisodes() {
     } catch (error) { toast(error.message, true); }
   };
   head.appendChild(aiButton);
+  const batchVideo = document.createElement("button");
+  batchVideo.className = "button primary";
+  batchVideo.style.margin = "10px 0 0 10px";
+  batchVideo.textContent = "Generate All Missing Moving Shots";
+  batchVideo.onclick = async () => {
+    const workflow = byId("workflowSelect").value;
+    if (!workflow)
+      return toast("Install a compatible local ComfyUI API video workflow first.", true);
+    try {
+      await saveSeries(false);
+      const queued = await api("/api/series/" + state.series.id +
+        "/episodes/" + episode.id + "/generate-missing", "POST", {workflow});
+      state.jobs[queued.job_id] = "queued";
+      toast("Episode video batch queued. Every successful video is retained as a separate take; retries skip completed shots.");
+      refreshJobs();
+    } catch(error) { toast(error.message, true); }
+  };
+  head.appendChild(batchVideo);
+  const batchHelp = document.createElement("p");
+  batchHelp.className = "muted";
+  batchHelp.style.fontSize = "11px";
+  batchHelp.textContent = "Uses REAL local ComfyUI model output only. Existing moving clips are skipped; failed jobs can resume. GTX 750 lacks practical VRAM for modern video diffusion.";
+  head.appendChild(batchHelp);
   const preflight = document.createElement("button");
   preflight.className = "button ghost";
   preflight.style.margin = "10px 0 0 10px";
