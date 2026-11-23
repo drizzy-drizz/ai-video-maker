@@ -81,6 +81,8 @@ def resolve_image(series: dict, scene: dict) -> Path | None:
         asset = get_asset(series, chosen_id)
         if not asset:
             raise ValueError("Scene references a missing image library asset: " + chosen_id)
+        if asset.get("rights") == "generated_unverified" and not asset.get("approved_for_use"):
+            raise ValueError("Generated image draft has not been approved for use and model rights")
         selected = Path(asset["path"])
         if not verify_asset(series, chosen_id)["valid"]:
             raise ValueError("Pinned image checksum changed; import a new version instead of modifying approved assets")
@@ -98,6 +100,8 @@ def resolve_image(series: dict, scene: dict) -> Path | None:
             asset = get_asset(series, pinned)
             if not asset:
                 raise ValueError("Character references a missing library asset: " + pinned)
+            if asset.get("rights") == "generated_unverified" and not asset.get("approved_for_use"):
+                raise ValueError("Generated character draft not approved for use")
             selected = Path(asset["path"])
             if not verify_asset(series, pinned)["valid"]:
                 raise ValueError("Character reference checksum changed; import a new pinned version")
