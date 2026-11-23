@@ -27,8 +27,10 @@ def wants_talking(scene: dict) -> bool:
     if mode == "cinematic":
         return False
     plan = scene.get("drama_plan") or {}
-    return bool(plan.get("dialogue") and scene.get("narration") and
-                scene.get("dialogue_audio_rights_confirmed") is True)
+    return bool((plan.get("dialogue") or str(scene.get("voice_script") or "").strip()) and
+                scene.get("narration") and
+                scene.get("dialogue_audio_rights_confirmed") is True and
+                comfy_drama_bridge.speech_matches_scene(scene))
 
 
 def report(series: dict, episode: dict) -> dict:
