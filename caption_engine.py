@@ -115,7 +115,8 @@ def build_srt(scenes: list[dict], durations: list[float],
         else:
             # Match the actual chosen spoken words, not silent screenplay directions.
             # Timing remains approximate unless the user sets manual cue intervals.
-            text = str(scene.get("voice_script") or scene.get("script") or "").strip()
+            text = ("" if scene.get("voice_mode") == "silent" else
+                    str(scene.get("voice_script") or scene.get("script") or "").strip())
             words = text.split()
             blocks = [" ".join(words[i:i+7]) for i in range(0, len(words), 7)]
             entries = []
