@@ -66,6 +66,8 @@ def _motion_filter(width: int, height: int, frames: int, motion: str) -> str:
 
 
 def _validated_narration(scene: dict) -> tuple[Path | None, float]:
+    if scene.get("voice_mode") == "silent":
+        return None, 0.0
     path = quality.normalized_path(scene.get("narration"))
     if path is None:
         return None, 0.0
