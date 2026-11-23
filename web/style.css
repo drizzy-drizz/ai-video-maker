@@ -137,3 +137,6 @@
 .sfx-row .button{grid-column:1/-1;justify-self:start}
 .sfx-row audio{grid-column:1/-1}
 @media(max-width:650px){.sfx-row{grid-template-columns:1fr}}
+
+
+.outdated-export{font-size:12px;font-weight:700;color:#f7cb95;background:#342a1a;border:1px solid #89653d;border-radius:9px;padding:11px;line-height:1.55}
