@@ -28,6 +28,7 @@ import voice_engine
 import scene_workspace
 import take_workspace
 import revision_workspace
+import portable_workspace
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -356,6 +357,11 @@ def post_job(job_type: str, func, *args) -> str:
                         output = func(*args, progress=progress)
                     else:
                         output = func(*args)
+            elif job_type in ("project-backup", "project-import"):
+                def progress(detail):
+                    with LOCK:
+                        JOBS[job_id]["detail"] = str(detail)[:400]
+                output = func(*args, progress=progress)
             else:
                 output = func(*args)
             with LOCK:
@@ -365,6 +371,27 @@ def post_job(job_type: str, func, *args) -> str:
                 JOBS[job_id].update(status="failed", detail=str(exc)[:1000])
     threading.Thread(target=execute, daemon=True).start()
     return job_id
+
+
+def export_project_backup(series_id: str, progress=None) -> str:
+    with LOCK:
+        series = read_project(series_id)
+    archive = portable_workspace.export_package(DATA, series, progress=progress)
+    return str(archive)
+
+
+def import_project_backup(source_zip: str, progress=None) -> str:
+    staged = Path(source_zip)
+    try:
+        imported = portable_workspace.import_package(DATA, staged, progress=progress)
+        with LOCK:
+            # A new ID is generated for every import; never overwrite an old series.
+            if project_path(imported["id"]).exists():
+                raise ValueError("Imported series ID already exists; retry the import")
+            save_project(imported)
+        return imported["id"]
+    finally:
+        staged.unlink(missing_ok=True)
 
 
 def generate_scene_image(series_id: str, episode_id: str, scene_id: str,
@@ -980,6 +1007,26 @@ class AppHandler(BaseHTTPRequestHandler):
             if language not in ("en", "tl"):
                 raise ValueError("Language must be en or tl")
             return self.respond(voice_engine.voice_options(language))
+        if method == "POST" and path == "/api/import-package":
+            if self.headers.get("Content-Type", "").split(";")[0] != "application/octet-stream":
+                raise ValueError("Portable project import accepts a ZIP file upload")
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0 or shutil.disk_usage(DATA).free <= length + 128 * 1024 * 1024:
+                raise ValueError("Portable ZIP upload missing or insufficient free local disk space")
+            upload_dir = DATA / "upload-staging"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=upload_dir, suffix=".zip", delete=False) as tmp:
+                file_path = Path(tmp.name)
+                remaining = length
+                while remaining:
+                    chunk = self.rfile.read(min(2 * 1024 * 1024, remaining))
+                    if not chunk:
+                        file_path.unlink(missing_ok=True)
+                        raise ValueError("Incomplete portable project ZIP upload")
+                    tmp.write(chunk)
+                    remaining -= len(chunk)
+            return self.respond({"job_id": post_job(
+                "project-import", import_project_backup, str(file_path))}, 202)
         if method == "GET" and path == "/api/models":
             return self.respond(MODEL_CATALOG)
         if method == "GET" and path == "/api/jobs":
@@ -1009,6 +1056,26 @@ class AppHandler(BaseHTTPRequestHandler):
                                 project[key] = payload[key]
                         save_project(project)
                     return self.respond(project)
+            if len(parts) == 4 and parts[3] == "backups" and method == "GET":
+                read_project(project_id)
+                folder = DATA / "backups" / project_id
+                archives = sorted(folder.glob("*.aivm.zip"), key=lambda item: item.stat().st_mtime,
+                                  reverse=True) if folder.exists() else []
+                return self.respond([{
+                    "name": item.name, "bytes": item.stat().st_size,
+                    "created_at": datetime.fromtimestamp(item.stat().st_mtime, timezone.utc).isoformat()
+                } for item in archives])
+            if len(parts) == 4 and parts[3] == "backup" and method == "POST":
+                read_project(project_id)
+                self.incoming()
+                return self.respond({"job_id": post_job(
+                    "project-backup", export_project_backup, project_id)}, 202)
+            if len(parts) == 5 and parts[3] == "backup" and method == "GET":
+                read_project(project_id)
+                file_name = parts[4]
+                if not re.fullmatch(re.escape(project_id) + r"-[0-9a-f]{12}\.aivm\.zip", file_name):
+                    raise ValueError("Not a valid portable archive name")
+                return self.serve_file(DATA / "backups" / project_id / file_name, "application/zip")
             if len(parts) == 4 and parts[3] == "revisions" and method == "GET":
                 read_project(project_id)  # Ensure series exists.
                 return self.respond(revision_workspace.list_revisions(DATA, project_id))
