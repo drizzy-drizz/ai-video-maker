@@ -739,9 +739,11 @@ def generate_scene(series_id: str, episode_id: str, scene_id: str, workflow_name
                 comfy_drama_bridge.stage_dialogue_audio(scene))
         plan = scene.get("drama_plan") or {}
         dialogue_lines = plan.get("dialogue") or []
-        exact_dialogue = " ".join(
-            str(line.get("exact_line") or "") for line in dialogue_lines
-            if isinstance(line, dict))[:3000]
+        exact_dialogue = (str(scene.get("voice_script") or "").strip() or
+            " ".join(str(line.get("exact_line") or "") for line in dialogue_lines
+                     if isinstance(line, dict)))[:3000]
+        if scene.get("voice_mode") == "silent":
+            exact_dialogue = ""
         graph = interpolate(template, {
             "{{PROMPT}}": canon["prompt"],
             "{{NEGATIVE_PROMPT}}": scene.get("negative_prompt", ""),
