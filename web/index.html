@@ -33,6 +33,12 @@
             </div>
             <div class="form-footer"><span>Original story is preserved. You can change scenes and episode titles after planning.</span><button type="submit" class="button primary" id="createButton">Build Episodes <span>→</span></button></div>
           </form>
+          <div class="editor-panel portable-import-panel">
+            <div class="eyebrow">RESTORE / TRANSFER</div><h2>Import an existing AI Video Maker project</h2>
+            <p class="muted">Choose a portable .aivm.zip backup to recover story, all shot edits, image ingredients, video takes, voices, subtitles and referenced files. A new series ID is created; existing projects are never overwritten.</p>
+            <label>Portable project archive<input id="portableImportFile" type="file" accept=".zip,.aivm.zip"></label>
+            <button id="importPortableButton" class="button ghost">Import Portable Project</button>
+          </div>
         </section>
 
         <section id="studioView" hidden>
@@ -76,6 +82,13 @@
               <p class="muted">Every meaningful saved project revision creates a small local JSON recovery snapshot. Restore a previous timeline or Series Bible without deleting original footage, voice files, or licensed assets. The current version is backed up before a restore. History keeps up to 60 snapshots, not copies of large video files.</p>
               <button id="historyRefresh" class="button ghost">Refresh Revision History</button>
               <div id="historyList" class="history-list"></div>
+              <div class="portable-backup-panel">
+                <div class="eyebrow">FULL MEDIA TRANSFER</div><h2>Portable Project Backup</h2>
+                <p class="muted">A complete .aivm.zip can include externally referenced moving-video files, local images, voices, shot retakes, music and existing exports. Unlike quick revisions, portable backups include media and may be large. No model weights or external software are bundled.</p>
+                <button id="createPortableButton" class="button primary">Create Full Portable Backup</button>
+                <button id="refreshPortableButton" class="button ghost">Refresh Backups</button>
+                <div id="portableBackupList" class="history-list"></div>
+              </div>
             </div>
           </section>
           <section id="sourceTab" hidden><div class="editor-panel"><div class="eyebrow">UNCHANGED SOURCE</div><h2>Your original storyline</h2><pre id="originalStory"></pre></div></section>
