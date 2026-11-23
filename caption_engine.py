@@ -113,7 +113,9 @@ def build_srt(scenes: list[dict], durations: list[float],
                         "move the timing inside the unoverlapped caption window")
             manual_count += len(entries)
         else:
-            text = str(scene.get("script") or "").strip()
+            # Match the actual chosen spoken words, not silent screenplay directions.
+            # Timing remains approximate unless the user sets manual cue intervals.
+            text = str(scene.get("voice_script") or scene.get("script") or "").strip()
             words = text.split()
             blocks = [" ".join(words[i:i+7]) for i in range(0, len(words), 7)]
             entries = []
