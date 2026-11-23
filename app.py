@@ -31,6 +31,7 @@ import revision_workspace
 import portable_workspace
 import music_workspace
 import sound_effects
+import drama_studio
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -315,16 +316,51 @@ def workflow_path(name: str) -> Path:
     return DATA / "workflows" / (safe_workflow_name(name) + ".json")
 
 
-def install_workflow(name: str, workflow: dict) -> None:
+def workflow_profile_path(name: str) -> Path:
+    return DATA / "workflow_profiles" / (safe_workflow_name(name) + ".json")
+
+
+def installed_workflow_profiles() -> list[dict]:
+    folder = DATA / "workflows"
+    items = []
+    for file in sorted(folder.glob("*.json")) if folder.exists() else []:
+        try:
+            graph = json.loads(file.read_text(encoding="utf-8"))
+            audit = drama_studio.workflow_capabilities(graph)
+            profile_file = workflow_profile_path(file.stem)
+            saved = json.loads(profile_file.read_text(encoding="utf-8")) if profile_file.is_file() else {}
+            family = saved.get("family", "custom")
+            items.append({"name": file.stem, "family": family, **audit,
+                          "status": "workflow_installed; model weights and GPU unverified"})
+        except (ValueError, OSError, KeyError) as exc:
+            items.append({"name": file.stem, "status": "invalid_workflow",
+                          "error": str(exc)[:200], "family": "custom"})
+    return items
+
+
+def install_workflow(name: str, workflow: dict, family: str="custom") -> None:
     if not isinstance(workflow, dict) or not workflow or len(workflow) > 500:
         raise ValueError("Workflow must be an API-format JSON object (up to 500 nodes)")
-    if not all(isinstance(node, dict) and "class_type" in node and "inputs" in node for node in workflow.values()):
-        raise ValueError("Export API-format JSON from ComfyUI, not the editor layout JSON")
-    if "{{PROMPT}}" not in json.dumps(workflow):
-        raise ValueError("Mark your positive text prompt with {{PROMPT}} in the API workflow")
+    safe_workflow_name(name)
+    audit = drama_studio.validate_model_workflow(family, workflow)
     path = workflow_path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(workflow, ensure_ascii=False, indent=2), encoding="utf-8")
+    profile_file = workflow_profile_path(name)
+    profile_file.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, suffix=".tmp",
+                                     encoding="utf-8", delete=False) as tmp:
+        temp_path = Path(tmp.name)
+        json.dump(workflow, tmp, ensure_ascii=False, indent=2)
+    with tempfile.NamedTemporaryFile("w", dir=profile_file.parent, suffix=".tmp",
+                                     encoding="utf-8", delete=False) as tmp:
+        meta_temp = Path(tmp.name)
+        json.dump({"family": family, **audit, "installed_at": now()}, tmp, indent=2)
+    try:
+        os.replace(temp_path, path)
+        os.replace(meta_temp, profile_file)
+    finally:
+        temp_path.unlink(missing_ok=True)
+        meta_temp.unlink(missing_ok=True)
 
 
 def upload_reference_to_comfy(path: Path) -> str:
@@ -1022,6 +1058,12 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def handle_request(self, method):
         path = urllib.parse.urlsplit(self.path).path
+        if method == "GET" and path == "/api/drama/models":
+            return self.respond(drama_studio.model_catalog())
+        if method == "GET" and path == "/api/drama/styles":
+            return self.respond({k: v for k, v in drama_studio.GENRES.items()})
+        if method == "GET" and path == "/api/drama/workflows":
+            return self.respond(installed_workflow_profiles())
         if method == "GET" and path == "/api/health":
             return self.respond(health())
         if method == "GET" and path == "/api/voice-options":
@@ -1433,6 +1475,29 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.incoming()
                 return self.respond({"job_id": post_job("motion-storyboard", render_animatic_episode,
                                                         project_id, episode_id)}, 202)
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "drama-board" and method == "GET":
+                project = read_project(parts[2])
+                episode = pick_episode(project, parts[4])
+                return self.respond({
+                    "genre": episode.get("drama_style") or "drama",
+                    "source_coverage": episode.get("drama_board_coverage") or {},
+                    "scenes": [{
+                        "scene_id": s["id"], "number": s.get("number"),
+                        "plan": s.get("drama_plan") or {}
+                    } for s in episode.get("scenes") or []]
+                })
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "drama-board" and method == "POST":
+                body = self.incoming()
+                with LOCK:
+                    series = read_project(parts[2])
+                    episode = pick_episode(series, parts[4])
+                    drama_board = drama_studio.board_for_episode(
+                        series, episode, genre=str(body.get("genre") or "drama"))
+                    applied = drama_studio.apply_board(series, episode, drama_board,
+                                                       preserve_locked=True)
+                    scene_workspace.invalidate(episode)
+                    save_project(series)
+                return self.respond({**applied, "board": drama_board})
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "timeline" and method == "GET":
                 series = read_project(parts[2])
                 episode = pick_episode(series, parts[4])
@@ -1568,8 +1633,11 @@ class AppHandler(BaseHTTPRequestHandler):
                                                         project_id, episode_id, scene_id, name)}, 202)
         if path == "/api/workflows" and method == "POST":
             payload = self.incoming()
-            install_workflow(str(payload.get("name", "")), payload.get("graph"))
-            return self.respond({"saved": True}, 201)
+            name = str(payload.get("name", ""))
+            family = str(payload.get("family") or "custom")
+            install_workflow(name, payload.get("graph"), family)
+            return self.respond({"saved": True, "name": name, "family": family,
+                                 "status": "graph installed; inference not validated"}, 201)
         if len(parts) == 4 and parts[:2] == ["api", "export"] and method == "GET":
             project = read_project(parts[2])
             episode = pick_episode(project, parts[3])
