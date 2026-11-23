@@ -794,7 +794,7 @@ def render_episode(series_id: str, episode_id: str) -> str:
     prepared = work / "pre-caption.mp4"
     staging = work / "final-staging.mp4"
     if soundtrack:
-        animatic.apply_soundtrack(assembled, soundtrack, encoded_timeline["total_seconds"], prepared)
+        animatic.apply_soundtrack(assembled, soundtrack, encoded_timeline["total_seconds"], prepared, settings=episode)
     else:
         shutil.copy2(assembled, prepared)
     subtitle_path = exports / (episode_id + ".srt")
