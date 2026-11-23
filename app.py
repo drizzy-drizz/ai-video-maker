@@ -809,6 +809,132 @@ class AppHandler(BaseHTTPRequestHandler):
                                 project[key] = payload[key]
                         save_project(project)
                     return self.respond(project)
+            if len(parts) == 4 and parts[3] == "revisions" and method == "GET":
+                read_project(project_id)  # Ensure series exists.
+                return self.respond(revision_workspace.list_revisions(DATA, project_id))
+            if (len(parts) == 6 and parts[3] == "revisions"
+                    and parts[5] == "restore" and method == "POST"):
+                self.incoming()
+                with LOCK:
+                    read_project(project_id)
+                    saved = revision_workspace.load_revision(DATA, project_id, parts[4])
+                    save_project(saved)  # Also snapshots today's current version for redo.
+                return self.respond(saved)
+            if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "archived" and method == "GET":
+                series = read_project(project_id)
+                return self.respond(pick_episode(series, parts[4]).get("archived_scenes") or [])
+            if len(parts) == 8 and parts[3] == "episodes" and parts[5] == "archived" and parts[7] == "restore" and method == "POST":
+                self.incoming()
+                with LOCK:
+                    series = read_project(project_id)
+                    episode = pick_episode(series, parts[4])
+                    outcome = scene_workspace.restore(episode, parts[6])
+                    save_project(series)
+                return self.respond(outcome)
+            if (len(parts) == 8 and parts[3] == "episodes"
+                    and parts[5] == "scenes" and parts[7] in ("duplicate", "split", "archive")
+                    and method == "POST"):
+                payload = self.incoming()
+                with LOCK:
+                    series = read_project(project_id)
+                    episode = pick_episode(series, parts[4])
+                    if parts[7] == "duplicate":
+                        outcome = scene_workspace.duplicate(episode, parts[6])
+                    elif parts[7] == "split":
+                        outcome = scene_workspace.split(
+                            episode, parts[6], at_seconds=payload.get("at_seconds"),
+                            after_word=payload.get("after_word"))
+                    else:
+                        outcome = scene_workspace.archive(episode, parts[6])
+                    save_project(series)
+                return self.respond(outcome)
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "takes" and method == "GET"):
+                series = read_project(project_id)
+                shot = pick_scene(pick_episode(series, parts[4]), parts[6])
+                return self.respond(take_workspace.list_takes(shot))
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "select-take" and method == "POST"):
+                body = self.incoming()
+                with LOCK:
+                    series = read_project(project_id)
+                    ep = pick_episode(series, parts[4])
+                    shot = pick_scene(ep, parts[6])
+                    selected = take_workspace.activate_take(shot, str(body.get("take_id") or ""))
+                    scene_workspace.invalidate(ep)
+                    save_project(series)
+                return self.respond(selected)
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "import-take" and method == "POST"):
+                body = self.incoming()
+                with LOCK:
+                    series = read_project(project_id)
+                    ep = pick_episode(series, parts[4])
+                    shot = pick_scene(ep, parts[6])
+                    created = take_workspace.add_take(
+                        DATA, project_id, parts[4], shot,
+                        Path(str(body.get("path") or "")),
+                        title=str(body.get("title") or "Approved footage"),
+                        rights=str(body.get("rights") or ""),
+                        notes=str(body.get("notes") or "Imported local footage"))
+                    scene_workspace.invalidate(ep)
+                    save_project(series)
+                return self.respond(created, 201)
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "takes-upload" and method == "POST"):
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                field = lambda name: (query.get(name) or [""])[0]
+                suffix = Path(field("filename")).suffix.lower()
+                if suffix not in quality.VIDEO_EXTENSIONS:
+                    raise ValueError("Choose an MP4, MOV, MKV or WebM video")
+                if self.headers.get("Content-Type", "").split(";")[0] != "application/octet-stream":
+                    raise ValueError("Video import requires binary upload")
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0:
+                    raise ValueError("Video upload must contain a file")
+                # We temporarily upload then move to the take library. Check free
+                # disk rather than imposing an arbitrary maximum video duration.
+                if shutil.disk_usage(DATA).free <= length + 128 * 1024 * 1024:
+                    raise ValueError("Not enough free space for this video upload")
+                upload_dir = DATA / "upload-staging"
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=upload_dir, suffix=suffix, delete=False) as tmp:
+                    staged = Path(tmp.name)
+                    pending = length
+                    while pending:
+                        block = self.rfile.read(min(1024 * 1024, pending))
+                        if not block:
+                            raise ValueError("Incomplete video upload; no shot changed")
+                        tmp.write(block)
+                        pending -= len(block)
+                try:
+                    with LOCK:
+                        series = read_project(project_id)
+                        episode = pick_episode(series, parts[4])
+                        shot = pick_scene(episode, parts[6])
+                        take = take_workspace.add_take(
+                            DATA, project_id, parts[4], shot, staged,
+                            title=field("title") or "Imported clip",
+                            rights=field("rights"),
+                            notes=field("notes"), move=True)
+                        scene_workspace.invalidate(episode)
+                        save_project(series)
+                    return self.respond(take, 201)
+                finally:
+                    staged.unlink(missing_ok=True)
+            if (len(parts) == 9 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "takes" and method == "GET"):
+                series = read_project(project_id)
+                shot = pick_scene(pick_episode(series, parts[4]), parts[6])
+                take = take_workspace.take_by_id(shot, parts[8])
+                source = Path(take["path"]).resolve()
+                owned = (DATA / "takes" / project_id / parts[4]).resolve()
+                if not source.is_relative_to(owned):
+                    raise ValueError("Take file must remain inside the local workspace")
+                take_workspace.validate_video(source)
+                mime = {".mp4": "video/mp4", ".mov": "video/quicktime",
+                        ".mkv": "video/x-matroska", ".webm": "video/webm"}[source.suffix.lower()]
+                return self.serve_file(source, mime)
             if len(parts) == 4 and parts[3] == "assets" and method == "POST":
                 payload = self.incoming()
                 with LOCK:
