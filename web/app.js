@@ -370,6 +370,55 @@ function buildDramaShotControls(episode, scene) {
       section.appendChild(dialogue);
     }
   }
+  const suggestion = scene.drama_ai_suggestion;
+  if (suggestion && suggestion.changes) {
+    const review = document.createElement("div");
+    review.className = "drama-ai-review";
+    const h = document.createElement("strong");
+    h.textContent = "LOCAL QWEN ACTING DIRECTION · UNAPPROVED SUGGESTION";
+    const explain = document.createElement("p");
+    explain.className = "muted";
+    explain.textContent = "Read against the original story. The local AI can invent details; nothing is used for generation until you explicitly approve.";
+    const idea = document.createElement("p");
+    const changes = suggestion.changes;
+    idea.textContent = "Suggested: " + changes.role + " · " +
+      changes.shot_type + " · " + changes.emotion + ". " +
+      changes.acting + " Visual objective: " + changes.visual_objective;
+    const approve = document.createElement("button");
+    approve.className = "button primary";
+    approve.textContent = "Accept & Lock Acting Proposal";
+    approve.onclick = () => {
+      if (!scene.drama_plan) return toast("Build the source-grounded drama board first.", true);
+      if (suggestion.source_script !== String(scene.script || "").trim())
+        return toast("The source script changed; regenerate Qwen suggestions first.", true);
+      if (!window.confirm("Apply this suggestion as a human-approved dramatic direction? Original dialogue remains unchanged."))
+        return;
+      try {
+        flushCaptionEditors();
+        for (const field of ["role", "shot_type", "emotion", "acting",
+                             "visual_objective", "audio_intent", "look", "location"])
+          scene.drama_plan[field] = changes[field];
+        scene.drama_plan.locked = true;
+        scene.drama_ai_suggestion = null;
+        state.dirty = true;
+        renderEpisodes();
+        renderDramaDirector();
+        toast("Reviewed dramatic direction applied and locked. Save Changes before generating footage.");
+      } catch(error) { toast(error.message, true); }
+    };
+    const discard = document.createElement("button");
+    discard.className = "button ghost";
+    discard.textContent = "Discard AI Suggestion";
+    discard.onclick = () => {
+      scene.drama_ai_suggestion = null;
+      state.dirty = true;
+      flushCaptionEditors();
+      renderEpisodes();
+      renderDramaDirector();
+    };
+    review.append(h, explain, idea, approve, discard);
+    section.appendChild(review);
+  }
   const audioNote = document.createElement("div");
   audioNote.className = "drama-audio-consent";
   const title = document.createElement("strong");
@@ -838,8 +887,10 @@ function renderDramaDirector() {
   byId("dramaGenre").value = episode.drama_style || "drama";
   populateDramaWorkflowSelects();
   const directed = episode.scenes.filter(scene => !!scene.drama_plan);
+  const suggestions = episode.scenes.filter(scene => !!scene.drama_ai_suggestion).length;
   summary.textContent = directed.length + " / " + episode.scenes.length +
-    " source-grounded shots have a drama direction. Locked plans are preserved on rebuilding.";
+    " source-grounded shots directed · " + suggestions +
+    " Qwen proposals awaiting human approval. Locked plans are preserved on rebuilding.";
   container.replaceChildren();
   episode.scenes.forEach((scene, index) => {
     const row = document.createElement("div");
@@ -1757,6 +1808,18 @@ async function refreshJobs() {
 
 async function init() {
   setupTabs();
+  byId("suggestDramaActing").onclick = async () => {
+    if (!state.series || !state.episodeId) return toast("Choose an episode first.", true);
+    try {
+      await saveSeries(false);
+      const result = await api("/api/series/" + state.series.id +
+        "/episodes/" + state.episodeId + "/drama-suggest",
+        "POST", {});
+      state.jobs[result.job_id] = "queued";
+      toast("Local Qwen is suggesting source-anchored acting choices. Review suggestions per shot before use.");
+      refreshJobs();
+    } catch(error) { toast(error.message, true); }
+  };
   byId("checkDramaProduction").onclick = () =>
     showDramaProductionReport().catch(e => toast(e.message, true));
   byId("generateDramaEpisode").onclick = async () => {
