@@ -65,7 +65,7 @@ def map_paths(value, mapping: dict[str, str]):
 
 
 def store_rel(root: Path, original: Path, series_id: str, sha: str, index: int) -> str:
-    for family in ("takes", "assets", "narrations", "exports", "media", "animatic"):
+    for family in ("takes", "assets", "narrations", "exports", "media", "animatic", "music"):
         base = (root / family / series_id).resolve()
         if original.is_relative_to(base):
             original_subpath = original.relative_to(base)
@@ -177,7 +177,7 @@ def import_package(root: Path, archive: Path, progress=None) -> dict:
             store = str(record["store_relative"]).replace("@SERIES@", series_id)
             family = Path(store).parts[0]
             if family not in ("takes", "assets", "narrations", "exports",
-                              "media", "animatic", "imported-media"):
+                              "media", "animatic", "imported-media", "music"):
                 raise ValueError("Archive attempted to write to an unsupported workspace folder")
             target = (root / store).resolve()
             allowed_base = (root / family / series_id).resolve()
