@@ -763,6 +763,68 @@ function buildProductionControls(episode, scene, index) {
   return root;
 }
 
+function populateDramaWorkflowSelects() {
+  const episode = state.series?.episodes?.find(e => e.id === state.episodeId);
+  const preferences = episode?.drama_workflows || {};
+  const dropdowns = [
+    ["dramaCinematicWorkflow", "cinematic", "Choose cinematic video workflow"],
+    ["dramaTalkingWorkflow", "talking", "Choose speaking-actor S2V workflow"]
+  ];
+  for (const [id, type, placeholder] of dropdowns) {
+    const dropdown = byId(id);
+    const previous = dropdown.value;
+    dropdown.replaceChildren();
+    const empty = document.createElement("option");
+    empty.value = ""; empty.textContent = placeholder;
+    dropdown.appendChild(empty);
+    (state.workflows || []).forEach(name => {
+      const profile = (state.workflowProfiles || []).find(row => row.name === name);
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name + (profile?.family && profile.family !== "custom" ?
+        " · " + profile.family : "") +
+        (profile?.has_dialogue_audio ? " · AUDIO" : "");
+      if (type === "talking" && profile && !profile.has_dialogue_audio) {
+        opt.textContent += " · no {{DIALOGUE_AUDIO}} input";
+      }
+      dropdown.appendChild(opt);
+    });
+    const desired = preferences[type] || previous;
+    dropdown.value = (state.workflows || []).includes(desired) ? desired : "";
+    dropdown.onchange = () => {
+      if (!episode) return;
+      episode.drama_workflows = episode.drama_workflows || {};
+      episode.drama_workflows[type] = dropdown.value;
+      state.dirty = true;
+    };
+  }
+}
+
+async function showDramaProductionReport() {
+  if (!state.series || !state.episodeId) return;
+  await saveSeries(false);
+  const report = await api("/api/series/" + state.series.id +
+    "/episodes/" + state.episodeId + "/drama-production");
+  const output = byId("dramaProductionStatus");
+  output.hidden = false;
+  const counts = report.counts;
+  output.innerHTML = "<strong>REAL DRAMA PRODUCTION READINESS · " +
+    escapeHtml(report.status) + "</strong><p>" +
+    escapeHtml(counts.directed) + "/" + escapeHtml(counts.total) +
+    " directed · " + escapeHtml(counts.video_ready) +
+    " approved video shots · " + escapeHtml(counts.unreviewed_takes) +
+    " unreviewed takes · " + escapeHtml(counts.talking_voice_missing) +
+    " missing talking voices</p>" +
+    (report.next_actions || []).map(action =>
+      '<div class="preflight-row warn"><span>' + escapeHtml(action) + '</span></div>'
+    ).join("") +
+    (report.scenes || []).map(row =>
+      '<div class="preflight-row"><b>SHOT ' + row.number +
+      " · " + escapeHtml(row.mode) + '</b><span>' +
+      escapeHtml(row.blockers.length ? row.blockers.join(" · ") : "Ready for editorial review") +
+      "</span></div>").join("");
+}
+
 function renderDramaDirector() {
   const container = byId("dramaShotList");
   const summary = byId("dramaBoardSummary");
@@ -774,6 +836,7 @@ function renderDramaDirector() {
   const episode = state.series.episodes.find(ep => ep.id === state.episodeId);
   if (!episode) return;
   byId("dramaGenre").value = episode.drama_style || "drama";
+  populateDramaWorkflowSelects();
   const directed = episode.scenes.filter(scene => !!scene.drama_plan);
   summary.textContent = directed.length + " / " + episode.scenes.length +
     " source-grounded shots have a drama direction. Locked plans are preserved on rebuilding.";
@@ -796,6 +859,25 @@ function renderDramaDirector() {
     note.className = "muted";
     note.textContent = data.acting || "Build the board to add acting and composition notes. No original dialogue is rewritten.";
     row.append(top, content, meta, note);
+    const modeControl = document.createElement("label");
+    modeControl.textContent = "Generation for this shot";
+    const mode = document.createElement("select");
+    [
+      ["auto", "Auto: speaking if dialogue + approved narration are ready"],
+      ["cinematic", "Cinematic moving shot (no S2V requirement)"],
+      ["talking", "Talking / lip-sync actor (approved image + voice mandatory)"]
+    ].forEach(([value, text]) => {
+      const option = document.createElement("option");
+      option.value = value; option.textContent = text;
+      mode.appendChild(option);
+    });
+    mode.value = scene.drama_generation_mode || "auto";
+    mode.onchange = () => {
+      scene.drama_generation_mode = mode.value;
+      state.dirty = true;
+    };
+    modeControl.appendChild(mode);
+    row.appendChild(modeControl);
     const go = document.createElement("button");
     go.className = "button ghost";
     go.textContent = "Edit in Shot Timeline";
@@ -1617,6 +1699,7 @@ async function refreshModels() {
 
 async function refreshWorkflows() {
   state.workflows = await api("/api/workflows");
+  state.workflowProfiles = await api("/api/drama/workflows");
   const selection = byId("workflowSelect");
   const previous = selection.value;
   selection.innerHTML = '<option value="">Select a local workflow...</option>';
@@ -1626,6 +1709,17 @@ async function refreshWorkflows() {
     selection.appendChild(item);
   });
   selection.value = state.workflows.includes(previous) ? previous : (state.workflows[0] || "");
+  const showProfile = () => {
+    const row = (state.workflowProfiles || []).find(p => p.name === selection.value);
+    byId("workflowStatus").textContent = row ?
+      "Installed graph: " + row.family + " · Inputs: " +
+      (row.placeholders || []).join(", ") +
+      " · Model weights, CUDA compatibility and generated quality remain unverified." :
+      "Install an API-format graph. This does not download its AI model or confirm GPU support.";
+  };
+  selection.onchange = showProfile;
+  showProfile();
+  populateDramaWorkflowSelects();
 }
 
 async function refreshJobs() {
@@ -1663,6 +1757,25 @@ async function refreshJobs() {
 
 async function init() {
   setupTabs();
+  byId("checkDramaProduction").onclick = () =>
+    showDramaProductionReport().catch(e => toast(e.message, true));
+  byId("generateDramaEpisode").onclick = async () => {
+    if (!state.series || !state.episodeId)
+      return toast("Open a story episode to generate drama footage.", true);
+    try {
+      await saveSeries(false);
+      const cinematic = byId("dramaCinematicWorkflow").value;
+      const talking = byId("dramaTalkingWorkflow").value;
+      if (!cinematic && !talking) return toast("Choose at least one locally installed video workflow.", true);
+      const started = await api("/api/series/" + state.series.id +
+        "/episodes/" + state.episodeId + "/drama-production", "POST", {
+          cinematic_workflow: cinematic, talking_workflow: talking
+        });
+      state.jobs[started.job_id] = "queued";
+      toast("Real drama generation started locally. Successful shots are checkpointed; every generated take needs your visual/rights approval.");
+      refreshJobs();
+    } catch(e) { toast(e.message, true); }
+  };
   byId("buildDramaBoard").onclick = async () => {
     if (!state.series || !state.episodeId) return toast("Open an episode first.", true);
     try {
