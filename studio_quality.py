@@ -176,6 +176,9 @@ def episode_preflight(series: dict, episode: dict) -> dict:
                 sound = media_info(soundtrack)
                 if not sound["has_audio"] or sound["duration"] < 0.2:
                     add("blocker", "invalid_soundtrack", "Soundtrack contains no usable audio stream")
+                else:
+                    import animatic
+                    animatic.soundtrack_settings(episode, sound["duration"])
             except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
                 add("blocker", "invalid_soundtrack", str(exc)[:260])
 
@@ -255,6 +258,14 @@ def episode_preflight(series: dict, episode: dict) -> dict:
         import timeline_engine
         try:
             timeline = timeline_engine.plan_episode(series, episode)
+            import sound_effects
+            for shot, entry in zip(scenes, timeline["entries"]):
+                try:
+                    sound_effects.validated_effects(shot, entry["duration"])
+                except (ValueError, OSError, TypeError, subprocess.TimeoutExpired) as exc:
+                    add("blocker", "invalid_scene_sfx",
+                        "Scene " + str(entry["number"]) + ": " + str(exc)[:260],
+                        entry["number"])
             if timeline["crossfades"] and not timeline_engine.transition_filters_available():
                 add("blocker", "transition_filters_missing",
                     "Installed FFmpeg must include xfade AND acrossfade filters")
