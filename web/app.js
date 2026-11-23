@@ -278,6 +278,124 @@ async function performSceneEdit(episode, scene, action, values = {}) {
   } catch (error) { toast(error.message, true); }
 }
 
+function buildDramaShotControls(episode, scene) {
+  const section = document.createElement("div");
+  section.className = "drama-scene-controls";
+  const heading = document.createElement("strong");
+  heading.textContent = "CINEMATIC DRAMA DIRECTION · Source-grounded";
+  section.appendChild(heading);
+  const plan = scene.drama_plan;
+  if (!plan) {
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = "No drama board attached yet. Choose a style and click Build Drama Shot Board in the Drama Director tab. Original story/shot prompts remain intact.";
+    const open = document.createElement("button");
+    open.className = "button ghost";
+    open.textContent = "Open Drama Director";
+    open.onclick = () => document.querySelector('[data-tab="drama"]').click();
+    section.append(note, open);
+  } else {
+    const controls = document.createElement("div");
+    controls.className = "drama-direction-grid";
+    const select = (label, key, values) => {
+      const box = document.createElement("label");
+      box.textContent = label;
+      const list = document.createElement("select");
+      values.forEach(([value, title]) => {
+        const option = document.createElement("option");
+        option.value = value; option.textContent = title;
+        list.appendChild(option);
+      });
+      list.value = plan[key] || values[0][0];
+      list.onchange = () => { plan[key] = list.value; state.dirty = true; };
+      box.appendChild(list);
+      controls.appendChild(box);
+    };
+    select("Dramatic purpose", "role", [
+      ["hook", "Hook / opening"], ["setup", "Setup"], ["escalation", "Conflict escalation"],
+      ["reveal", "Revelation"], ["payoff", "Payoff"], ["cliffhanger", "Cliffhanger"]
+    ]);
+    select("Camera composition", "shot_type", [
+      ["wide", "Wide establishing"], ["medium", "Medium"], ["close_up", "Close-up"],
+      ["over_shoulder", "Over the shoulder"], ["two_shot", "Two actors in frame"],
+      ["reaction", "Reaction"], ["insert", "Important object / detail"]
+    ]);
+    select("Visible acting emotion", "emotion", [
+      ["restrained", "Restrained"], ["anxious", "Anxious"], ["joyful", "Joyful"],
+      ["angry", "Angry"], ["heartbroken", "Heartbroken"], ["hopeful", "Hopeful"],
+      ["shocked", "Shocked"], ["suspicious", "Suspicious"],
+      ["tender", "Tender"], ["amused", "Amused"]
+    ]);
+    const field = (label, key, rows=2) => {
+      const box = document.createElement("label");
+      box.textContent = label;
+      const input = document.createElement("textarea");
+      input.rows = rows; input.maxLength = 1000;
+      input.value = plan[key] || "";
+      input.oninput = () => { plan[key] = input.value; state.dirty = true; };
+      box.appendChild(input);
+      controls.appendChild(box);
+    };
+    field("Actor performance/blocking", "acting");
+    field("What the camera must actually show", "visual_objective");
+    field("Soundscape intention", "audio_intent");
+    field("World/lighting style", "look");
+    field("Filming location / continuity", "location", 1);
+    const lock = document.createElement("label");
+    lock.className = "drama-lock";
+    const checked = document.createElement("input");
+    checked.type = "checkbox"; checked.checked = plan.locked === true;
+    checked.onchange = () => { plan.locked = checked.checked; state.dirty = true; };
+    lock.append(checked, document.createTextNode(
+      " Lock this shot direction — future Drama Board rebuilds keep my manual adjustments"));
+    section.append(controls, lock);
+    const cast = document.createElement("p");
+    cast.className = "muted";
+    cast.textContent = "Detected recurring cast: " +
+      ((plan.cast || []).join(", ") || "No explicit names found — review manually") +
+      " · Original dialogue remains unchanged.";
+    section.appendChild(cast);
+    if ((plan.dialogue || []).length) {
+      const dialogue = document.createElement("div");
+      dialogue.className = "drama-dialogue";
+      const caption = document.createElement("strong");
+      caption.textContent = "SCRIPT-EXACT DIALOGUE EXTRACTS";
+      dialogue.appendChild(caption);
+      plan.dialogue.forEach(line => {
+        const p = document.createElement("p");
+        p.textContent = (line.speaker || "Unknown speaker") + ": " +
+          (line.exact_line || "");
+        dialogue.appendChild(p);
+      });
+      section.appendChild(dialogue);
+    }
+  }
+  const audioNote = document.createElement("div");
+  audioNote.className = "drama-audio-consent";
+  const title = document.createElement("strong");
+  title.textContent = "Talking character / Speech-to-video";
+  const consent = document.createElement("label");
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = scene.dialogue_audio_rights_confirmed === true;
+  checkbox.onchange = e => {
+    scene.dialogue_audio_rights_confirmed = e.target.checked;
+    state.dirty = true;
+  };
+  consent.append(checkbox, document.createTextNode(
+    " I own/permit the speaker, voice reference, model and narration for talking-video generation"));
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent = "To animate speaking actors: attach a local narration WAV, approve a character image, install a ComfyUI S2V API workflow with {{DIALOGUE_AUDIO}} and {{REFERENCE_IMAGE}}, and configure AIVM_COMFY_INPUT_DIR on the SAME machine as ComfyUI. Audio quality and lip sync require actual listening/visual review.";
+  const status = document.createElement("small");
+  status.textContent = scene.video_audio_contains_dialogue ?
+    "Current selected video take has embedded generated speech audio: do not mix the narration again." :
+    "Renderer will mix the attached narration only if the selected video does not already contain embedded speech.";
+  audioNote.append(title, consent, hint, status);
+  section.appendChild(audioNote);
+  return section;
+}
+
 function buildProductionControls(episode, scene, index) {
   const root = document.createElement("div");
   root.className = "production-workspace";
@@ -326,6 +444,7 @@ function buildProductionControls(episode, scene, index) {
   };
   commands.append(duplicate, splitOffsetLabel, splitWordLabel, split, archive);
   root.append(title, commands);
+  root.appendChild(buildDramaShotControls(episode, scene));
 
   const imgTitle = document.createElement("h4");
   imgTitle.textContent = "AI-generated scene images — local ComfyUI";
