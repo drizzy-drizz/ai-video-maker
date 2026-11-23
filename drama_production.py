@@ -11,6 +11,7 @@ from pathlib import Path
 
 import drama_studio
 import studio_quality as quality
+import comfy_drama_bridge
 
 
 def wants_talking(scene: dict) -> bool:
@@ -52,7 +53,8 @@ def report(series: dict, episode: dict) -> dict:
             tally["images_missing"] += 1
         voice = quality.normalized_path(scene.get("narration"))
         voice_valid = bool(voice and voice.is_file() and
-                           scene.get("dialogue_audio_rights_confirmed"))
+                           scene.get("dialogue_audio_rights_confirmed") and
+                           comfy_drama_bridge.speech_matches_scene(scene))
         if talking and not voice_valid:
             tally["talking_voice_missing"] += 1
         clip = quality.normalized_path(scene.get("clip"))
