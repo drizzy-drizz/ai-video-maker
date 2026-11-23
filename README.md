@@ -11,6 +11,22 @@ A general-purpose Windows-first app: paste a Tagalog or English storyline; build
 - Target platforms: Windows desktop; local network services bound to loopback by default.
 - Current developer machine: Ryzen 5 5600G, 16 GB RAM, **GeForce GTX 750** (older Maxwell GPU). This machine can edit and CPU-encode a motion storyboard, but it cannot practically run modern high-quality video diffusion models like Wan2.2 5B.
 
+## Latest coding-first workspace upgrades (November 23, 2026)
+
+**Development status: code implemented and connected in the local editor, but this new batch has NOT been compiled, regression-tested or Windows-packaged.** Per the user's workflow preference, both GitHub Actions CI and Windows workflows are temporarily **manual-trigger only**. Do not interpret the old green build artifacts as validation of the code below.
+
+- **Production shot workspace:** duplicate scenes, split real clips and story text at controlled positions, archive/restore shots without deleting media, and restore older saved series revisions.
+- **Video retakes:** browser video imports, rights/ownership declaration, versioned immutable footage files, per-take playback/selection, preserved editing decisions when possible, and explicit approval for model-generated footage. ComfyUI outputs no longer overwrite previous video takes.
+- **One-click model batches:** generate missing moving footage or still-image drafts through a locally installed ComfyUI workflow; successful shot results persist, failed jobs can resume without replacing already supplied footage, and editor changes prevent stale generation from overriding current selections.
+- **Still-image review:** each generated image is saved as an unapproved, source-prompt-grounded ingredient. User reviews image and model/source rights before pinning it to ComfyUI reference conditioning or CPU motion storyboard.
+- **Portable projects:** full-media ZIP export/import with checksum and path-safe recovery into a NEW series ID; fast bounded JSON revision history remains available separately.
+- **Real licensed soundtrack catalog:** import unlimited-by-local-disk audio files, preview them, choose tracks per episode and edit the point where the song starts, gain, loop option, fade-in/out. Same saved settings are applied to moving-video and CPU-storyboard MP4 audio.
+- **Scene-level sound effects:** multiple user-owned/licensed audio cues per scene with local source choice, on-shot timing, volume, and independent actual FFmpeg mix. Expiring effects receive a short tail fade rather than silently truncating with a click.
+
+[**Full coding-first continuation, boundaries and deferred one-shot acceptance plan**](docs/CODING_FIRST_CONTINUATION_2026_11_23.md)
+
+The desktop application still requires external optional free model weights and compatible hardware for genuine local AI image/video generation. The GTX 750 does not realistically meet modern Wan video diffusion needs. Real model visual quality, Filipino/English voice naturalness, automatic word alignment, and a complete multitrack NLE are not yet proven.
+
 ## Three separate honest workflows
 
 **Local motion storyboard — complete CPU feature:** Storyline → editable scenes → upload licensed/approved still images to an immutable versioned asset library → pin images to shots → select camera movement and duration → optionally supply a narration file per scene and rights-confirmed music → **Check Images** → **Render Motion Storyboard** → actual 9:16 or 16:9 animated MP4, scene-timed estimated SRT, technical QA JSON. This uses FFmpeg zoom/pan on still images, **NOT diffusion-generated moving AI video**. A GTX 750 is not needed; CPU does the work. Uploaded image versions never silently change old scene assignments.
@@ -78,7 +94,7 @@ Google Flow supports prompt-to-video, start/end frames, reusable visual ingredie
 
 Clone or download this GitHub repository and double-click `start-windows.bat`. Python 3.12 is recommended; pywebview is optional for a native window (`py -3.12 -m pip install -r requirements-desktop.txt`). Install FFmpeg/FFprobe for actual MP4 export. The editor opens locally at `http://127.0.0.1:8766`. Optional AI Director: run Ollama locally and `ollama pull qwen3:4b`. Optional moving AI footage: run ComfyUI locally with a GPU and an installed real-video model, then import an API-format JSON workflow with `{{PROMPT}}` placeholder. All data saves under your Windows home folder in `AI-Video-Maker`.
 
-A separate [Windows desktop build workflow](.github/workflows/windows-build.yml) performs a Windows runtime smoke test (local HTTP server, creation/retrieval of a story and UI load) and packages a portable application folder as a GitHub Actions artifact; a passing smoke test is not proof of full Windows GPU/media compatibility. See [setup](docs/WINDOWS_SETUP.md).
+A separate [Windows desktop build workflow](.github/workflows/windows-build.yml) can run a Windows server/runtime smoke test and package a portable application folder as a GitHub Actions artifact. **During the current coding-first feature batch this workflow and application CI are manual-trigger only; the most recent successful artifact predates the newest production features.** See [setup](docs/WINDOWS_SETUP.md).
 
 ## Implementation priorities
 
