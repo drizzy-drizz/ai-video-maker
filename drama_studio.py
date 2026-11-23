@@ -80,7 +80,7 @@ def workflow_capabilities(workflow: dict) -> dict:
         raise ValueError("Export ComfyUI API-format JSON, not the graphical editor layout")
     raw = __import__("json").dumps(workflow)
     recognized = ("{{PROMPT}}","{{NEGATIVE_PROMPT}}","{{SEED}}",
-                  "{{REFERENCE_IMAGE}}","{{DIALOGUE_AUDIO}}","{{PREVIOUS_FRAME}}")
+                  "{{REFERENCE_IMAGE}}","{{DIALOGUE_AUDIO}}","{{DIALOGUE_TEXT}}","{{PREVIOUS_FRAME}}")
     found = [token for token in recognized if token in raw]
     if "{{PROMPT}}" not in found:
         raise ValueError("Put {{PROMPT}} in the positive prompt input of the ComfyUI graph")
