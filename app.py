@@ -1135,6 +1135,24 @@ class AppHandler(BaseHTTPRequestHandler):
                 mime = {".mp4": "video/mp4", ".mov": "video/quicktime",
                         ".mkv": "video/x-matroska", ".webm": "video/webm"}[source.suffix.lower()]
                 return self.serve_file(source, mime)
+            if (len(parts) == 6 and parts[3] == "assets"
+                    and parts[5] == "approve" and method == "POST"):
+                body = self.incoming()
+                if body.get("rights_confirmed") is not True:
+                    raise ValueError("Review the model's rights and source before approving this image")
+                with LOCK:
+                    series = read_project(project_id)
+                    asset = asset_library.get_asset(series, parts[4])
+                    if not asset:
+                        raise ValueError("Image asset not found")
+                    if not asset_library.verify_asset(series, asset["id"])["valid"]:
+                        raise ValueError("Asset checksum changed; not approving modified image")
+                    asset["approved_for_use"] = True
+                    asset["approval_at"] = now()
+                    if isinstance(asset.get("generator"), dict):
+                        asset["generator"]["model_license_reviewed"] = True
+                    save_project(series)
+                return self.respond({"id": asset["id"], "approved_for_use": True})
             if len(parts) == 4 and parts[3] == "assets" and method == "POST":
                 payload = self.incoming()
                 with LOCK:
@@ -1222,6 +1240,18 @@ class AppHandler(BaseHTTPRequestHandler):
                 episode = pick_episode(series, parts[4])
                 scene = pick_scene(episode, parts[6])
                 return self.respond(quality.compose_canonical_prompt(series, episode, scene))
+            if (len(parts) == 6 and parts[3] == "episodes"
+                    and parts[5] == "generate-missing-images" and method == "POST"):
+                project_id, episode_id = parts[2], parts[4]
+                pick_episode(read_project(project_id), episode_id)
+                body = self.incoming()
+                workflow = safe_workflow_name(str(body.get("workflow") or ""))
+                if not workflow_path(workflow).is_file():
+                    raise ValueError("Install a local ComfyUI SaveImage workflow first")
+                return self.respond({
+                    "job_id": post_job("episode-images", generate_missing_episode_images,
+                                       project_id, episode_id, workflow)
+                }, 202)
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "generate-missing" and method == "POST":
                 project_id, episode_id = parts[2], parts[4]
                 pick_episode(read_project(project_id), episode_id)
@@ -1285,6 +1315,42 @@ class AppHandler(BaseHTTPRequestHandler):
                     raise ValueError(selected + " is not configured: " + status["reason"])
                 return self.respond({"job_id": post_job("offline-voice", generate_scene_voice,
                                      project_id, episode_id, scene_id, selected, True)}, 202)
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "generate-image" and method == "POST"):
+                project_id, episode_id, scene_id = parts[2], parts[4], parts[6]
+                pick_scene(pick_episode(read_project(project_id), episode_id), scene_id)
+                body = self.incoming()
+                workflow = safe_workflow_name(str(body.get("workflow") or ""))
+                if not workflow_path(workflow).is_file():
+                    raise ValueError("Install a local ComfyUI SaveImage workflow first")
+                return self.respond({
+                    "job_id": post_job("scene-image", generate_scene_image,
+                                       project_id, episode_id, scene_id, workflow)
+                }, 202)
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "approve-image" and method == "POST"):
+                body = self.incoming()
+                if body.get("rights_confirmed") is not True:
+                    raise ValueError("Review the image and confirm its model/usage rights first")
+                with LOCK:
+                    project = read_project(project_id)
+                    ep = pick_episode(project, parts[4])
+                    scene = pick_scene(ep, parts[6])
+                    image_id = str(body.get("asset_id") or scene.get("generated_image_asset_id") or "")
+                    asset = asset_library.get_asset(project, image_id)
+                    if not asset:
+                        raise ValueError("Image draft was not found in this series")
+                    if not asset_library.verify_asset(project, image_id)["valid"]:
+                        raise ValueError("Image asset was modified after import")
+                    asset["approved_for_use"] = True
+                    asset["approval_at"] = now()
+                    if isinstance(asset.get("generator"), dict):
+                        asset["generator"]["model_license_reviewed"] = True
+                    scene["reference_asset_id"] = image_id
+                    scene["reference_image"] = ""
+                    scene_workspace.invalidate(ep)
+                    save_project(project)
+                return self.respond({"scene_id": scene["id"], "approved_asset_id": image_id})
             if len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes" and parts[7] == "generate" and method == "POST":
                 project_id, episode_id, scene_id = parts[2], parts[4], parts[6]
                 pick_scene(pick_episode(read_project(project_id), episode_id), scene_id)
