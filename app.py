@@ -33,6 +33,7 @@ import music_workspace
 import sound_effects
 import drama_studio
 import comfy_drama_bridge
+import drama_production
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -400,9 +401,9 @@ def post_job(job_type: str, func, *args) -> str:
             elif job_type in ("offline-voice", "episode-narration"):
                 with VOICE_LOCK:
                     output = func(*args)
-            elif job_type in ("video-generation", "episode-video", "scene-image", "episode-images"):
+            elif job_type in ("video-generation", "episode-video", "scene-image", "episode-images", "episode-drama"):
                 with GENERATION_LOCK:
-                    if job_type in ("episode-video", "episode-images"):
+                    if job_type in ("episode-video", "episode-images", "episode-drama"):
                         def progress(detail):
                             with LOCK:
                                 JOBS[job_id]["detail"] = str(detail)[:400]
@@ -444,6 +445,34 @@ def import_project_backup(source_zip: str, progress=None) -> str:
         return imported["id"]
     finally:
         staged.unlink(missing_ok=True)
+
+
+def rebuild_drama_board(series_id: str, episode_id: str,
+                        genre: str | None=None) -> dict:
+    """Atomic, source-safe board creation that respects locked manual shots."""
+    with LOCK:
+        series = read_project(series_id)
+        episode = pick_episode(series, episode_id)
+        board = drama_studio.board_for_episode(
+            series, episode, genre=genre or episode.get("drama_style") or "drama")
+        result = drama_studio.apply_board(
+            series, episode, board, preserve_locked=True)
+        scene_workspace.invalidate(episode)
+        save_project(series)
+    return {**result, "board": board}
+
+
+def produce_drama_episode(series_id: str, episode_id: str,
+                          cinematic_workflow: str, talking_workflow: str,
+                          progress=None) -> str:
+    """One-click real local dramatic video production, checkpointed by shot."""
+    return drama_production.produce_missing(
+        series_id, episode_id,
+        cinematic_workflow, talking_workflow,
+        load_project=read_project, get_episode=pick_episode,
+        prepare_board=rebuild_drama_board,
+        generate_scene=generate_scene,
+        workflow_path=workflow_path, progress=progress)
 
 
 def generate_scene_image(series_id: str, episode_id: str, scene_id: str,
@@ -1554,6 +1583,28 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.incoming()
                 return self.respond({"job_id": post_job("motion-storyboard", render_animatic_episode,
                                                         project_id, episode_id)}, 202)
+            if (len(parts) == 6 and parts[3] == "episodes"
+                    and parts[5] == "drama-production" and method == "GET"):
+                series = read_project(parts[2])
+                episode = pick_episode(series, parts[4])
+                return self.respond(drama_production.report(series, episode))
+            if (len(parts) == 6 and parts[3] == "episodes"
+                    and parts[5] == "drama-production" and method == "POST"):
+                body = self.incoming()
+                series = read_project(parts[2])
+                pick_episode(series, parts[4])
+                cinematic = str(body.get("cinematic_workflow") or "").strip()
+                talking = str(body.get("talking_workflow") or "").strip()
+                if cinematic:
+                    safe_workflow_name(cinematic)
+                if talking:
+                    safe_workflow_name(talking)
+                if not cinematic and not talking:
+                    raise ValueError("Choose a cinematic or speech-driven local ComfyUI workflow")
+                return self.respond({
+                    "job_id": post_job("episode-drama", produce_drama_episode,
+                                       parts[2], parts[4], cinematic, talking)
+                }, 202)
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "drama-board" and method == "GET":
                 project = read_project(parts[2])
                 episode = pick_episode(project, parts[4])
@@ -1567,16 +1618,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 })
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "drama-board" and method == "POST":
                 body = self.incoming()
-                with LOCK:
-                    series = read_project(parts[2])
-                    episode = pick_episode(series, parts[4])
-                    drama_board = drama_studio.board_for_episode(
-                        series, episode, genre=str(body.get("genre") or "drama"))
-                    applied = drama_studio.apply_board(series, episode, drama_board,
-                                                       preserve_locked=True)
-                    scene_workspace.invalidate(episode)
-                    save_project(series)
-                return self.respond({**applied, "board": drama_board})
+                return self.respond(rebuild_drama_board(
+                    parts[2], parts[4], str(body.get("genre") or "drama")))
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "timeline" and method == "GET":
                 series = read_project(parts[2])
                 episode = pick_episode(series, parts[4])
