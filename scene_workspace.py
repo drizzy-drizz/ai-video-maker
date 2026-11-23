@@ -100,6 +100,10 @@ def split(episode: dict, scene_id: str, *, at_seconds: float,
         first["trim_end_seconds"] = start + relative
         second["trim_start_seconds"] = start + relative
         second["trim_end_seconds"] = end
+        # A paired image animatic uses the same narrative beat lengths, instead
+        # of accidentally duplicating the original full shot duration twice.
+        first["duration_hint_seconds"] = round(relative, 3)
+        second["duration_hint_seconds"] = round(full-relative, 3)
     else:
         full = float(original.get("duration_hint_seconds") or 6.0)
         if not math.isfinite(full) or full <= 0:
