@@ -14,7 +14,7 @@ from pathlib import Path
 
 from studio_quality import validate_image
 
-RIGHTS = {"original", "licensed", "permission", "public_domain"}
+RIGHTS = {"original", "licensed", "permission", "public_domain", "generated_unverified"}
 MAX_TOTAL_ASSETS = 10000
 
 
@@ -34,7 +34,7 @@ def get_asset(series: dict, asset_id: str) -> dict | None:
 def add_image_asset(data_root: Path, series: dict, source: str, *, title: str,
                     rights: str, credit: str = "", replace_asset_id: str = "") -> dict:
     if rights not in RIGHTS:
-        raise ValueError("Choose verified image rights: original, licensed, permission or public_domain")
+        raise ValueError("Choose image rights: original, licensed, permission, public_domain, or a generated-unverified draft")
     title = title.strip()
     if not title or len(title) > 120:
         raise ValueError("Image title must be 1–120 characters")
