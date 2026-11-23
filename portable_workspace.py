@@ -64,7 +64,7 @@ def map_paths(value, mapping: dict[str, str]):
     return value
 
 
-def store_rel(root: Path, original: Path, series_id: str, sha: str) -> str:
+def store_rel(root: Path, original: Path, series_id: str, sha: str, index: int) -> str:
     for family in ("takes", "assets", "narrations", "exports", "media", "animatic"):
         base = (root / family / series_id).resolve()
         if original.is_relative_to(base):
@@ -72,7 +72,7 @@ def store_rel(root: Path, original: Path, series_id: str, sha: str) -> str:
             # Keep managed path structure. These segments come from existing
             # local project files, but normalizing still prevents path traversal.
             return str(Path(family) / "@SERIES@" / original_subpath).replace("\\", "/")
-    return "imported-media/@SERIES@/" + sha + original.suffix.lower()
+    return "imported-media/@SERIES@/" + sha + "-" + f"{index:06d}" + original.suffix.lower()
 
 
 def export_package(root: Path, project: dict, progress=None) -> Path:
@@ -80,11 +80,13 @@ def export_package(root: Path, project: dict, progress=None) -> Path:
     archive_dir = root / "backups" / series_id
     archive_dir.mkdir(parents=True, exist_ok=True)
     files = {}
+    original_aliases = {}
     missing = []
     for field, value in referenced_paths(project):
         selected = Path(value).expanduser().resolve()
         if selected.is_file():
             files[str(selected)] = selected
+            original_aliases.setdefault(str(selected), set()).add(value)
         else:
             missing.append(field + ": " + value[:180])
     if missing:
@@ -96,21 +98,19 @@ def export_package(root: Path, project: dict, progress=None) -> Path:
         raise ValueError("Not enough disk space to create a complete portable project archive")
     path_map = {}
     media = []
-    visited = set()
     total = len(files)
     for i, source in enumerate(files.values(), 1):
         if progress:
             progress(f"Hashing linked media {i}/{total}: {source.name[:70]}")
         sha = digest(source)
-        name = "media/" + sha + source.suffix.lower()
+        name = "media/" + sha + "-" + f"{i:06d}" + source.suffix.lower()
         token = "package://" + name
+        for alias in original_aliases[str(source)]:
+            path_map[alias] = token
         path_map[str(source)] = token
-        if name in visited:
-            continue
-        visited.add(name)
         media.append({
             "archive_path": name, "sha256": sha, "bytes": source.stat().st_size,
-            "store_relative": store_rel(root, source, series_id, sha),
+            "store_relative": store_rel(root, source, series_id, sha, i),
             "_source": str(source)
         })
     project_copy = map_paths(copy.deepcopy(project), path_map)
@@ -132,13 +132,8 @@ def export_package(root: Path, project: dict, progress=None) -> Path:
     try:
         with zipfile.ZipFile(staged, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as zip_out:
             zip_out.writestr("manifest.json", manifest_bytes)
-            # Refuse repeated archive name with incompatible sources.
-            included = set()
             for i, source in enumerate(files.values(), 1):
                 token = path_map[str(source)][len("package://"):]
-                if token in included:
-                    continue
-                included.add(token)
                 if progress:
                     progress(f"Packing source file {i}/{total}: {source.name[:70]}")
                 zip_out.write(source, arcname=token)
@@ -171,15 +166,18 @@ def import_package(root: Path, archive: Path, progress=None) -> dict:
         for record in entries:
             arcname = record["archive_path"]
             if (not isinstance(arcname, str) or
-                    not re.fullmatch(r"media/[0-9a-f]{64}\.[A-Za-z0-9]{1,10}", arcname)):
+                    not re.fullmatch(r"media/[0-9a-f]{64}-[0-9]{6}\.[A-Za-z0-9]{1,10}", arcname)):
                 raise ValueError("Invalid archive media identifier")
             sha = record["sha256"]
-            if not re.fullmatch(r"[0-9a-f]{64}", str(sha)) or not arcname.startswith("media/" + sha):
+            if not re.fullmatch(r"[0-9a-f]{64}", str(sha)) or not arcname.startswith("media/" + sha + "-"):
                 raise ValueError("Archive media checksum label mismatch")
             if arcname not in names or arcname in described:
                 raise ValueError("Required media missing or duplicated in archive")
             described.add(arcname)
             store = str(record["store_relative"]).replace("@SERIES@", series_id)
+            if Path(store).parts[0] not in ("takes", "assets", "narrations", "exports",
+                                             "media", "animatic", "imported-media"):
+                raise ValueError("Archive attempted to write to an unsupported workspace folder")
             target = (root / store).resolve()
             if not target.is_relative_to(root.resolve()):
                 raise ValueError("Archive target tries to write outside local workspace")
