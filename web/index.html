@@ -43,7 +43,7 @@
 
         <section id="studioView" hidden>
           <div class="studio-intro"><div><div class="eyebrow">SERIES WORKSPACE</div><h1 id="studioTitle"></h1><p id="studioMeta"></p></div><div class="studio-actions"><button class="button ghost" id="copyScript">Copy Original Story</button><button class="button primary" id="saveSeries">Save Changes</button></div></div>
-          <div class="tabs"><button class="tab active" data-tab="episodes">Episodes + Shots</button><button class="tab" data-tab="bible">Series Bible</button><button class="tab" data-tab="assets">Asset Library</button><button class="tab" data-tab="history">History / Recovery</button><button class="tab" data-tab="source">Original Story</button></div>
+          <div class="tabs"><button class="tab active" data-tab="episodes">Episodes + Shots</button><button class="tab" data-tab="drama">Drama Director</button><button class="tab" data-tab="bible">Series Bible</button><button class="tab" data-tab="assets">Asset Library</button><button class="tab" data-tab="history">History / Recovery</button><button class="tab" data-tab="source">Original Story</button></div>
 
           <section id="episodeTab">
             <div class="workspace-layout">
@@ -76,6 +76,36 @@
               <div id="assetLibraryList" class="asset-library-list"></div>
             </div>
           </section>
+          <section id="dramaTab" hidden>
+            <div class="editor-panel">
+              <div class="eyebrow">AI DRAMA / MICRO-SERIES PRODUCTION</div>
+              <h2>Drama Director — screenplay to cinematic shot plan</h2>
+              <p class="muted">Create a source-grounded directing board for the current episode: emotional tension, readable shot composition, dialogue, cast/locations and cliffhanger planning. The original storyline and manually edited shot prompts remain unchanged. Locked shot directions are preserved.</p>
+              <div class="input-grid">
+                <label>Drama style<select id="dramaGenre">
+                  <option value="drama">Grounded Drama</option>
+                  <option value="romance">Romance / Relationship</option>
+                  <option value="revenge">Revenge Drama</option>
+                  <option value="family">Family / Domestic</option>
+                  <option value="suspense">Psychological Suspense</option>
+                  <option value="comedy">Comedy</option>
+                  <option value="action">Action</option>
+                  <option value="fantasy">Fantasy</option>
+                  <option value="mystery">Mystery</option>
+                  <option value="slice_of_life">Slice of Life</option>
+                </select></label>
+                <div><button id="buildDramaBoard" class="button primary">Build &amp; Save Drama Shot Board</button></div>
+              </div>
+              <div id="dramaBoardSummary" class="drama-board-summary"></div>
+              <div class="section-header"><div><div class="eyebrow">SOURCE-ANCHORED CAST</div><h2>Shot direction review</h2></div></div>
+              <div id="dramaShotList"></div>
+            </div>
+            <div class="editor-panel">
+              <div class="eyebrow">OFFICIAL OPEN-SOURCE / OPEN-WEIGHTS RESEARCH</div><h2>Cinematic Video &amp; Talking Character Models</h2>
+              <p class="muted">Model cards and official repos are research starting points, NOT pre-installed generation engines. To run one locally, install licensed compatible weights and a ComfyUI API-format graph using the placeholders below. Model/voice rights and GPU suitability must be checked before posting a monetized drama.</p>
+              <div id="dramaModelCatalog" class="drama-model-grid"></div>
+            </div>
+          </section>
           <section id="historyTab" hidden>
             <div class="editor-panel">
               <div class="eyebrow">LOCAL / NON-DESTRUCTIVE</div><h2>Series History & Recovery</h2>
@@ -100,7 +130,17 @@
     <aside class="right-sidebar">
       <div class="right-title"><div class="eyebrow">PRODUCTION DESK</div><h2>Models + Jobs</h2></div>
       <div class="readiness"><div class="tiny-label">ENGINE READINESS</div><div id="healthCards"></div></div>
-      <div class="right-section"><div class="tiny-label">COMFYUI VIDEO WORKFLOWS</div><p>Export API-format JSON from local ComfyUI. Replace your positive prompt with <code>{{PROMPT}}</code>. For image-to-video, set a LoadImage filename to <code>{{REFERENCE_IMAGE}}</code>, and attach an approved scene or character image. No paid API is used.</p><label>Workflow name<input id="workflowName" value="wan22_local" placeholder="wan22_local"></label><label>Paste API workflow JSON<textarea id="workflowText" rows="5" placeholder='{"1":{"class_type":"...","inputs":{"text":"{{PROMPT}}"}}}'></textarea></label><button class="button ghost full" id="installWorkflow">Install Workflow</button><select id="workflowSelect" aria-label="Active ComfyUI workflow"></select><p class="tiny-note">Actual moving AI video requires downloaded model weights and a compatible GPU. No credits or paid inference service used.</p></div>
+      <div class="right-section"><div class="tiny-label">COMFYUI VIDEO WORKFLOWS</div><p>Export API-format JSON from local ComfyUI. Replace your positive prompt with <code>{{PROMPT}}</code>. For image-to-video, set a LoadImage filename to <code>{{REFERENCE_IMAGE}}</code>, and attach an approved scene or character image. No paid API is used.</p><label>Workflow name<input id="workflowName" value="wan22_local" placeholder="wan22_local"></label>
+              <label>Model family<select id="workflowFamily">
+                <option value="custom">Custom / Any ComfyUI API Graph</option>
+                <option value="wan22_s2v">Wan2.2 Speech-to-Video (image + audio)</option>
+                <option value="ltx25">LTX-2.5 Audio-Video</option>
+                <option value="skyreels_v3">SkyReels V3</option>
+                <option value="hunyuan15">HunyuanVideo 1.5</option>
+                <option value="infinitetalk">InfiniteTalk Talking Video</option>
+                <option value="skyreels_v2">SkyReels V2</option>
+              </select></label>
+              <p class="tiny-note">Local talking-video graphs can use <code>{{DIALOGUE_AUDIO}}</code> in a LoadAudio filename input; requires <code>AIVM_COMFY_INPUT_DIR</code> pointing to your actual local ComfyUI input folder. Continuity workflows can use <code>{{PREVIOUS_FRAME}}</code> for the preceding approved shot's last frame.</p><label>Paste API workflow JSON<textarea id="workflowText" rows="5" placeholder='{"1":{"class_type":"...","inputs":{"text":"{{PROMPT}}"}}}'></textarea></label><button class="button ghost full" id="installWorkflow">Install Workflow</button><select id="workflowSelect" aria-label="Active ComfyUI workflow"></select><p class="tiny-note">Actual moving AI video requires downloaded model weights and a compatible GPU. No credits or paid inference service used.</p></div>
       <div class="right-section"><div class="tiny-label">OFFLINE VOICE STATUS</div><p>Generate per-shot speech using locally installed Piper or VoxCPM2 models. No paid API. Voice quality and commercial model/reference rights require review.</p><div id="voiceStatus"><div class="muted">Open a series to check installed speech models.</div></div></div>
       <div class="right-section"><div class="tiny-label">MODEL CATALOG <span class="dot"></span></div><div id="modelCatalog"></div></div>
       <div class="right-section"><div class="tiny-label">BACKGROUND JOBS</div><div id="jobsList"><div class="muted">No jobs.</div></div></div>
