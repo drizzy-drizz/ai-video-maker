@@ -25,6 +25,9 @@ import animatic
 import caption_engine
 import timeline_engine
 import voice_engine
+import scene_workspace
+import take_workspace
+import revision_workspace
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -143,6 +146,9 @@ def save_project(project: dict) -> None:
     path = project_path(project["id"])
     path.parent.mkdir(parents=True, exist_ok=True)
     with LOCK:
+        if path.is_file():
+            existing = json.loads(path.read_text(encoding="utf-8"))
+            revision_workspace.capture(DATA, project["id"], existing, project)
         with tempfile.NamedTemporaryFile("w", dir=path.parent, suffix=".tmp", encoding="utf-8", delete=False) as handle:
             temp_name = handle.name
             json.dump(project, handle, ensure_ascii=False, indent=2)
