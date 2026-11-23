@@ -419,10 +419,74 @@ function buildDramaShotControls(episode, scene) {
     review.append(h, explain, idea, approve, discard);
     section.appendChild(review);
   }
+  const screenplay = scene.screenplay_suggestion;
+  if (screenplay) {
+    const draft = document.createElement("div");
+    draft.className = "screenplay-draft-panel";
+    const title = document.createElement("strong");
+    title.textContent = "LOCAL QWEN · CREATIVE SPOKEN DIALOGUE DRAFT (NOT A SOURCE QUOTE)";
+    const speaker = document.createElement("p");
+    speaker.textContent = "Suggested speaker: " + screenplay.speaker +
+      " · Direction: " + screenplay.delivery;
+    const line = document.createElement("blockquote");
+    line.textContent = screenplay.spoken_line ||
+      "(Silent action — no spoken dialogue suggested)";
+    const why = document.createElement("p");
+    why.className = "muted";
+    why.textContent = "Suggested subtext: " + screenplay.subtext +
+      ". Compare with the original story, because new dialogue may change its meaning.";
+    const accept = document.createElement("button");
+    accept.className = "button primary";
+    accept.textContent = screenplay.spoken_line ?
+      "Approve Dialogue For TTS" : "Approve Silent Action";
+    accept.onclick = () => {
+      if (screenplay.source_text !== String(scene.script || ""))
+        return toast("Original scene was edited. Generate a new dialogue draft before approving.", true);
+      if (!window.confirm(
+        "Accept this creative dialogue proposal? It changes only the spoken track for this shot; the original source script is preserved."))
+        return;
+      scene.voice_script = screenplay.spoken_line || "";
+      scene.voice_mode = screenplay.spoken_line ? "narrate" : "silent";
+      scene.screenplay_suggestion = null;
+      state.dirty = true;
+      flushCaptionEditors();
+      renderEpisodes();
+      renderDramaDirector();
+      toast("Spoken dialogue accepted for this shot. Regenerate or replace existing narration WAV before S2V.");
+    };
+    const reject = document.createElement("button");
+    reject.className = "button ghost";
+    reject.textContent = "Discard Dialogue Draft";
+    reject.onclick = () => {
+      scene.screenplay_suggestion = null;
+      state.dirty = true;
+      flushCaptionEditors();
+      renderEpisodes();
+      renderDramaDirector();
+    };
+    draft.append(title, speaker, line, why, accept, reject);
+    section.appendChild(draft);
+  }
   const voicePanel = document.createElement("div");
   voicePanel.className = "drama-voice-script";
   const voiceTitle = document.createElement("strong");
   voiceTitle.textContent = "SPOKEN DIALOGUE / VOICE SCRIPT · Keep acting separate from speech";
+  const voiceModeLabel = document.createElement("label");
+  voiceModeLabel.textContent = "Audible speech mode";
+  const voiceMode = document.createElement("select");
+  [["narrate", "Narrate this shot / speak selected voice script"],
+   ["silent", "Silent dramatic action — no additional TTS or estimated captions"]
+  ].forEach(([value,label]) => {
+    const option = document.createElement("option");
+    option.value = value; option.textContent = label;
+    voiceMode.appendChild(option);
+  });
+  voiceMode.value = scene.voice_mode === "silent" ? "silent" : "narrate";
+  voiceMode.onchange = () => {
+    scene.voice_mode = voiceMode.value;
+    state.dirty = true;
+  };
+  voiceModeLabel.appendChild(voiceMode);
   const voiceHelp = document.createElement("p");
   voiceHelp.className = "muted";
   voiceHelp.textContent = "Enter exactly what the audience should HEAR. This overrides the scene's screenplay ONLY for the local TTS voice track. Leave empty to narrate the full original scene script. Nothing here rewrites your source story or visual direction.";
@@ -466,7 +530,7 @@ function buildDramaShotControls(episode, scene) {
   voiceStatus.textContent = scene.narration ?
     "An audio file is already attached. After changing speech text, regenerate or replace the WAV to hear the new words." :
     "No speech audio attached yet. Generate Local Narration or add your own permitted WAV after saving.";
-  voicePanel.append(voiceTitle, voiceHelp, voiceText, voiceActions, voiceStatus);
+  voicePanel.append(voiceTitle, voiceModeLabel, voiceHelp, voiceText, voiceActions, voiceStatus);
   section.appendChild(voicePanel);
 
   const audioNote = document.createElement("div");
@@ -938,9 +1002,10 @@ function renderDramaDirector() {
   populateDramaWorkflowSelects();
   const directed = episode.scenes.filter(scene => !!scene.drama_plan);
   const suggestions = episode.scenes.filter(scene => !!scene.drama_ai_suggestion).length;
+  const spokenDrafts = episode.scenes.filter(scene => !!scene.screenplay_suggestion).length;
   summary.textContent = directed.length + " / " + episode.scenes.length +
     " source-grounded shots directed · " + suggestions +
-    " Qwen proposals awaiting human approval. Locked plans are preserved on rebuilding.";
+    " acting proposals · " + spokenDrafts + " dialogue drafts awaiting human approval. Locked plans preserved.";
   container.replaceChildren();
   episode.scenes.forEach((scene, index) => {
     const row = document.createElement("div");
@@ -1858,6 +1923,19 @@ async function refreshJobs() {
 
 async function init() {
   setupTabs();
+  byId("suggestScreenplay").onclick = async () => {
+    if (!state.series || !state.episodeId)
+      return toast("Choose a story episode to write dialogue drafts.", true);
+    try {
+      await saveSeries(false);
+      const result = await api("/api/series/" + state.series.id +
+        "/episodes/" + state.episodeId + "/screenplay-suggest",
+        "POST", {});
+      state.jobs[result.job_id] = "queued";
+      toast("Local Qwen is drafting actor lines from your plot. These are creative drafts—approve each one before it becomes a voice script.");
+      refreshJobs();
+    } catch(error) { toast(error.message, true); }
+  };
   byId("suggestDramaActing").onclick = async () => {
     if (!state.series || !state.episodeId) return toast("Choose an episode first.", true);
     try {
