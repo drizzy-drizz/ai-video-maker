@@ -139,6 +139,19 @@ def new_series(payload: dict) -> dict:
     }
 
 
+def editable_episode_signature(episode: dict) -> str:
+    """Exclude output-status bookkeeping, keep every creative edit decision."""
+    excluded = {
+        "status", "render_path", "captions_path", "quality_report_path",
+        "animatic_path", "animatic_captions_path", "animatic_quality_path",
+        "animatic_mode", "last_edit_at", "render_updated_at"
+    }
+    return json.dumps(
+        {k: v for k, v in episode.items() if k not in excluded},
+        ensure_ascii=False, sort_keys=True
+    )
+
+
 def project_path(project_id: str) -> Path:
     if not re.fullmatch(r"[a-f0-9]{12}", project_id):
         raise ValueError("Invalid series ID")
@@ -1061,9 +1074,33 @@ class AppHandler(BaseHTTPRequestHandler):
                     payload = self.incoming()
                     with LOCK:
                         project = read_project(project_id)
+                        expected = payload.get("expected_updated_at")
+                        if expected is not None and str(expected) != str(project.get("updated_at")):
+                            return self.respond({
+                                "error": "This series changed in another editor or background job. "
+                                         "Your unsaved changes were NOT overwritten onto it. "
+                                         "Review the current series before saving again.",
+                                "reason": "stale_revision",
+                                "updated_at": project.get("updated_at")
+                            }, 409)
+                        former = {ep.get("id"): ep for ep in project.get("episodes") or []}
+                        bible_changed = ("bible" in payload and payload["bible"] != project.get("bible"))
+                        format_changed = ("format" in payload and payload["format"] != project.get("format"))
                         for key in ("title", "genre", "format", "language", "bible", "episodes"):
                             if key in payload:
                                 project[key] = payload[key]
+                        if "episodes" in payload or bible_changed or format_changed:
+                            for episode in project.get("episodes") or []:
+                                previous = former.get(episode.get("id"))
+                                if not previous:
+                                    continue
+                                changed = (bible_changed or format_changed or
+                                           editable_episode_signature(episode) !=
+                                           editable_episode_signature(previous))
+                                if changed:
+                                    scene_workspace.invalidate(episode)
+                                    if not previous.get("render_path") and not previous.get("animatic_path"):
+                                        episode["status"] = "planned"
                         save_project(project)
                     return self.respond(project)
             if len(parts) == 4 and parts[3] == "music" and method == "GET":
