@@ -182,6 +182,14 @@ def episode_preflight(series: dict, episode: dict) -> dict:
     for i, scene in enumerate(scenes, 1):
         num = scene.get("number") or i
         clip = normalized_path(scene.get("clip"))
+        take_id = str(scene.get("selected_take_id") or "")
+        selected_take = next((take for take in scene.get("takes") or []
+                              if str(take.get("id")) == take_id), None)
+        if (selected_take and selected_take.get("rights") == "generated_unverified"
+                and not selected_take.get("approved_for_use")
+                and str(selected_take.get("path") or "") == str(scene.get("clip") or "")):
+            add("blocker", "generated_take_unapproved",
+                "Selected AI-generated take requires visual and model-usage rights approval before export", num)
         if not clip or not clip.is_file():
             add("blocker", "missing_video", "Attach a real moving-video file", num)
             clip_durations.append(0.0)
