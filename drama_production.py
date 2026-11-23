@@ -19,7 +19,11 @@ def wants_talking(scene: dict) -> bool:
     if mode not in ("auto", "cinematic", "talking"):
         raise ValueError("Drama video mode must be auto, cinematic or talking")
     if mode == "talking":
+        if scene.get("voice_mode") == "silent":
+            raise ValueError("Silent-action shot cannot be forced into talking-video mode")
         return True
+    if scene.get("voice_mode") == "silent":
+        return False
     if mode == "cinematic":
         return False
     plan = scene.get("drama_plan") or {}
