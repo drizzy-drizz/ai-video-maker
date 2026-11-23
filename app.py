@@ -1054,6 +1054,24 @@ class AppHandler(BaseHTTPRequestHandler):
                 shot = pick_scene(pick_episode(series, parts[4]), parts[6])
                 return self.respond(take_workspace.list_takes(shot))
             if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
+                    and parts[7] == "approve-take" and method == "POST"):
+                body = self.incoming()
+                if body.get("rights_confirmed") is not True:
+                    raise ValueError("Review the moving footage and its model/likeness usage rights first")
+                with LOCK:
+                    series = read_project(project_id)
+                    ep = pick_episode(series, parts[4])
+                    scene = pick_scene(ep, parts[6])
+                    selected = take_workspace.take_by_id(scene, str(body.get("take_id") or ""))
+                    take_workspace.validate_video(Path(selected["path"]))
+                    if take_workspace.file_digest(Path(selected["path"])) != selected["sha256"]:
+                        raise ValueError("Take was modified after generation; import a new version")
+                    selected["approved_for_use"] = True
+                    selected["approval_at"] = now()
+                    scene_workspace.invalidate(ep)
+                    save_project(series)
+                return self.respond({"id": selected["id"], "approved_for_use": True})
+            if (len(parts) == 8 and parts[3] == "episodes" and parts[5] == "scenes"
                     and parts[7] == "select-take" and method == "POST"):
                 body = self.incoming()
                 with LOCK:
