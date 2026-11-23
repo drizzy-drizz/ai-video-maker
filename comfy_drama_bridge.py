@@ -42,11 +42,27 @@ def configured_input_folder() -> Path:
     return folder
 
 
+def speech_script_digest(scene: dict) -> str:
+    """Track whether a local TTS WAV still matches its associated text."""
+    expected = str(scene.get("voice_script") or "").strip() or str(scene.get("script") or "").strip()
+    return hashlib.sha256(expected.encode("utf-8")).hexdigest()
+
+
+def speech_matches_scene(scene: dict) -> bool:
+    provenance = scene.get("voice_provenance") or {}
+    recorded = provenance.get("spoken_text_sha256")
+    return not recorded or recorded == speech_script_digest(scene)
+
+
 def stage_dialogue_audio(scene: dict) -> tuple[str, Path, dict]:
     if not scene.get("dialogue_audio_rights_confirmed"):
         raise ValueError(
             "Confirm voice-model, speaker/likeness, and audio use rights before "
             "using scene narration to drive talking-video generation")
+    if not speech_matches_scene(scene):
+        raise ValueError(
+            "Attached synthetic voice was generated from older spoken text. "
+            "Regenerate/replace narration before using speech-to-video.")
     raw = quality.normalized_path(scene.get("narration"))
     if not raw or not raw.is_file() or raw.suffix.lower() not in quality.AUDIO_EXTENSIONS:
         raise ValueError("Speech-to-video requires an existing WAV/MP3/M4A/FLAC/OGG/OPUS/AAC narration file")
