@@ -1846,6 +1846,13 @@ async function refreshHealth() {
     (good ? 'var(--accent)' : 'var(--warning)') + '">' +
     escapeHtml(gpu.message || "No GPU assessment available") + '</small>';
   area.appendChild(warning);
+  const audioState = document.createElement("div");
+  audioState.className = "ready-row";
+  audioState.innerHTML = "<div><strong>Drama talking-video audio link</strong>" +
+    "<small>" + escapeHtml(info.drama_audio_input?.note || "Shared local ComfyUI input not checked") +
+    "</small></div><span class='light " +
+    (info.drama_audio_input?.configured ? "" : "off") + "'></span>";
+  area.appendChild(audioState);
   const note = document.createElement("p");
   note.className = "tiny-note";
   note.textContent = info.comfyui_note || "Video generation is not verified.";
