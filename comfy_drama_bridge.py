@@ -55,6 +55,8 @@ def speech_matches_scene(scene: dict) -> bool:
 
 
 def stage_dialogue_audio(scene: dict) -> tuple[str, Path, dict]:
+    if scene.get("voice_mode") == "silent":
+        raise ValueError("Silent-action shot cannot condition a speech-driven video model")
     if not scene.get("dialogue_audio_rights_confirmed"):
         raise ValueError(
             "Confirm voice-model, speaker/likeness, and audio use rights before "
