@@ -112,6 +112,8 @@ async function loadSeries(id) {
     renderEpisodes();
     await refreshLibrary();
     await refreshVoiceStatus();
+    if (document.querySelector('[data-tab="history"]')?.classList.contains("active"))
+      await refreshHistory();
   } catch (error) { toast(error.message, true); }
 }
 
@@ -164,6 +166,242 @@ function renderAssets() {
     list.appendChild(row);
   });
   if (!(project.assets || []).length) list.innerHTML = '<p class="muted">Import your first original or licensed image above.</p>';
+}
+
+async function refreshHistory() {
+  if (!state.series) return;
+  const list = byId("historyList");
+  const entries = await api("/api/series/" + state.series.id + "/revisions");
+  list.replaceChildren();
+  if (!entries.length) {
+    list.innerHTML = '<p class="muted">No earlier edits saved yet. Each meaningful Save Changes creates a recovery point.</p>';
+    return;
+  }
+  entries.forEach((version, index) => {
+    const row = document.createElement("div");
+    row.className = "history-row";
+    const info = document.createElement("div");
+    const when = new Date(version.created_at);
+    const date = Number.isNaN(when.getTime()) ? version.created_at : when.toLocaleString();
+    info.innerHTML = "<strong>Revision " + (entries.length - index) + " · " +
+      escapeHtml(version.title) + "</strong><small>" +
+      escapeHtml(date) + " · " + escapeHtml(version.episode_count) +
+      " episode(s) · " + escapeHtml(version.sha256.slice(0, 12)) +
+      "…</small>";
+    const restore = document.createElement("button");
+    restore.className = "button ghost";
+    restore.textContent = "Restore this revision";
+    restore.onclick = async () => {
+      if (!window.confirm("Restore this saved project revision? The current project will first be saved to its recovery history. Existing media files are not deleted.")) return;
+      try {
+        await saveSeries(false);
+        await api("/api/series/" + state.series.id +
+          "/revisions/" + version.id + "/restore", "POST", {});
+        await loadSeries(state.series.id);
+        document.querySelector('[data-tab="history"]').click();
+        await refreshHistory();
+        toast("Saved project revision restored. Current/previous versions are available in History.");
+      } catch (error) { toast(error.message, true); }
+    };
+    row.append(info, restore);
+    list.appendChild(row);
+  });
+}
+
+async function performSceneEdit(episode, scene, action, values = {}) {
+  if (!state.series) return;
+  try {
+    await saveSeries(false);
+    const response = await api("/api/series/" + state.series.id +
+      "/episodes/" + episode.id + "/scenes/" + scene.id + "/" + action,
+      "POST", values);
+    await loadSeries(state.series.id);
+    toast("Shot " + action + " saved non-destructively. " +
+      (response.scene_count || "") + " active shots.");
+  } catch (error) { toast(error.message, true); }
+}
+
+function buildProductionControls(episode, scene, index) {
+  const root = document.createElement("div");
+  root.className = "production-workspace";
+  const title = document.createElement("strong");
+  title.textContent = "PRODUCTION WORKSPACE · Editing / Retakes / Recovery";
+  const commands = document.createElement("div");
+  commands.className = "production-toolbar";
+  const duplicate = document.createElement("button");
+  duplicate.className = "button ghost";
+  duplicate.textContent = "Duplicate shot";
+  duplicate.onclick = () => performSceneEdit(episode, scene, "duplicate");
+
+  const splitOffsetLabel = document.createElement("label");
+  splitOffsetLabel.textContent = "Split after (s from trimmed shot start)";
+  const splitOffset = document.createElement("input");
+  splitOffset.type = "number"; splitOffset.min = ".35"; splitOffset.step = ".05";
+  splitOffset.placeholder = "e.g. 3.0";
+  splitOffsetLabel.appendChild(splitOffset);
+  const scriptWords = String(scene.script || "").trim().split(/\s+/).filter(Boolean);
+  const splitWordLabel = document.createElement("label");
+  splitWordLabel.textContent = "Split after script word #";
+  const splitWord = document.createElement("input");
+  splitWord.type = "number"; splitWord.min = "1";
+  splitWord.max = String(Math.max(1, scriptWords.length - 1));
+  splitWord.value = String(Math.max(1, Math.floor(scriptWords.length/2)));
+  splitWordLabel.appendChild(splitWord);
+  const split = document.createElement("button");
+  split.className = "button ghost";
+  split.textContent = "Split into two shots";
+  split.onclick = () => {
+    const seconds = Number(splitOffset.value);
+    const word = Number(splitWord.value);
+    if (!Number.isFinite(seconds) || seconds <= 0)
+      return toast("Enter a positive split time relative to the trimmed shot.", true);
+    if (!Number.isInteger(word) || word <= 0 || word >= scriptWords.length)
+      return toast("Choose a whole word number inside the shot script.", true);
+    performSceneEdit(episode, scene, "split", { at_seconds: seconds, after_word: word });
+  };
+  const archive = document.createElement("button");
+  archive.className = "button ghost";
+  archive.textContent = "Archive shot";
+  archive.disabled = episode.scenes.length < 2;
+  archive.onclick = () => {
+    if (window.confirm("Archive this shot? You can restore it from Archived Shots without deleting the video file."))
+      performSceneEdit(episode, scene, "archive");
+  };
+  commands.append(duplicate, splitOffsetLabel, splitWordLabel, split, archive);
+  root.append(title, commands);
+
+  const takeTitle = document.createElement("h4");
+  takeTitle.textContent = "Approved footage takes — keep every version";
+  root.appendChild(takeTitle);
+  const takes = (scene.takes || []);
+  if (!takes.length) {
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = "No versioned takes yet. Import footage below, or Generate Moving Shot on a compatible GPU. Every new generated shot becomes a separate take.";
+    root.appendChild(note);
+  }
+  takes.forEach(take => {
+    const panel = document.createElement("div");
+    panel.className = "take-row";
+    const info = document.createElement("div");
+    const selected = scene.selected_take_id === take.id;
+    info.innerHTML = '<strong>' + escapeHtml(take.title) + ' · v' +
+      escapeHtml(take.version) + (selected ? " · SELECTED" : "") +
+      '</strong><small>' + escapeHtml(take.origin) + " · " +
+      escapeHtml(take.rights) + " · " + escapeHtml(take.duration) +
+      "s · " + escapeHtml(take.width) + "x" + escapeHtml(take.height) +
+      '</small>';
+    const actions = document.createElement("div");
+    actions.className = "take-actions";
+    const preview = document.createElement("button");
+    preview.className = "button ghost";
+    preview.textContent = "Preview";
+    const player = document.createElement("video");
+    player.className = "shot-source-preview";
+    player.controls = true; player.preload = "none";
+    player.playsInline = true; player.hidden = true;
+    preview.onclick = () => {
+      player.hidden = !player.hidden;
+      if (!player.hidden && !player.src) {
+        player.src = "/api/series/" + state.series.id + "/episodes/" + episode.id +
+          "/scenes/" + scene.id + "/takes/" + take.id;
+      }
+    };
+    actions.appendChild(preview);
+    if (!selected) {
+      const choose = document.createElement("button");
+      choose.className = "button primary";
+      choose.textContent = "Use this take";
+      choose.onclick = async () => {
+        try {
+          await saveSeries(false);
+          await api("/api/series/" + state.series.id + "/episodes/" +
+            episode.id + "/scenes/" + scene.id + "/select-take", "POST", {
+              take_id: take.id
+            });
+          await loadSeries(state.series.id);
+          toast("Alternate footage selected. Original take and timeline history retained.");
+        } catch(error) { toast(error.message, true); }
+      };
+      actions.appendChild(choose);
+    }
+    panel.append(info, actions, player);
+    root.appendChild(panel);
+  });
+  const importBox = document.createElement("div");
+  importBox.className = "take-import";
+  const pickLabel = document.createElement("label");
+  pickLabel.textContent = "Import video file (.mp4, .mov, .mkv, .webm)";
+  const picker = document.createElement("input");
+  picker.type = "file"; picker.accept = ".mp4,.mov,.mkv,.webm";
+  pickLabel.appendChild(picker);
+  const rightsLabel = document.createElement("label");
+  rightsLabel.textContent = "Confirmed usage rights";
+  const rights = document.createElement("select");
+  [
+    ["", "Select rights before importing"],
+    ["original", "My original footage"],
+    ["licensed", "Licensed to me"],
+    ["permission", "Permission from owner"],
+    ["public_domain", "Verified public domain"]
+  ].forEach(([value, text]) => {
+    const option = document.createElement("option");
+    option.value = value; option.textContent = text;
+    rights.appendChild(option);
+  });
+  rightsLabel.appendChild(rights);
+  const takeName = document.createElement("input");
+  takeName.placeholder = "Take title (optional)";
+  takeName.maxLength = 150;
+  const upload = document.createElement("button");
+  upload.className = "button primary";
+  upload.textContent = "Import video as new take";
+  upload.onclick = async () => {
+    const file = picker.files[0];
+    if (!file) return toast("Choose a video file first.", true);
+    if (!rights.value) return toast("Confirm footage usage rights before import.", true);
+    upload.disabled = true;
+    try {
+      await saveSeries(false);
+      const params = new URLSearchParams({
+        filename: file.name,
+        title: takeName.value || file.name,
+        rights: rights.value,
+        notes: "Imported via studio file picker"
+      });
+      const target = "/api/series/" + state.series.id + "/episodes/" +
+        episode.id + "/scenes/" + scene.id + "/takes-upload?" + params.toString();
+      const reply = await fetch(target, {
+        method: "POST", body: file,
+        headers: {"Content-Type": "application/octet-stream"}
+      });
+      const data = await reply.json();
+      if (!reply.ok) throw new Error(data.error || "Video take import failed");
+      await loadSeries(state.series.id);
+      toast("Video imported into managed takes as version " + data.version + ". Original file unchanged.");
+    } catch(error) { toast(error.message, true); }
+    finally { upload.disabled = false; }
+  };
+  const fromPath = document.createElement("button");
+  fromPath.className = "button ghost";
+  fromPath.textContent = "Store current video path as take";
+  fromPath.onclick = async () => {
+    if (!scene.clip) return toast("Enter a local video path first.", true);
+    if (!rights.value) return toast("Confirm footage usage rights before import.", true);
+    try {
+      await saveSeries(false);
+      await api("/api/series/" + state.series.id + "/episodes/" +
+        episode.id + "/scenes/" + scene.id + "/import-take", "POST", {
+          path: scene.clip, title: takeName.value || ("Shot " + (index+1)),
+          rights: rights.value
+        });
+      await loadSeries(state.series.id);
+      toast("Current local source copied to a versioned take; original file unchanged.");
+    } catch(error) { toast(error.message, true); }
+  };
+  importBox.append(pickLabel, rightsLabel, takeName, upload, fromPath);
+  root.appendChild(importBox);
+  return root;
 }
 
 function renderEpisodes() {
@@ -329,6 +567,35 @@ function renderEpisodes() {
   music.querySelector(".storyboard-music-rights").onchange = e => {
     episode.soundtrack_rights_confirmed = e.target.checked; state.dirty = true;
   };
+  const archivedItems = episode.archived_scenes || [];
+  const archivePanel = document.createElement("div");
+  archivePanel.className = "archived-shots";
+  if (archivedItems.length) {
+    const heading = document.createElement("strong");
+    heading.textContent = "Archived Shots (" + archivedItems.length + ") — recover without deleting assets";
+    archivePanel.appendChild(heading);
+    archivedItems.forEach(shot => {
+      const row = document.createElement("div");
+      row.className = "archived-row";
+      const short = document.createElement("span");
+      short.textContent = String(shot.script || "Untitled shot").slice(0, 120);
+      const restore = document.createElement("button");
+      restore.className = "button ghost";
+      restore.textContent = "Restore shot";
+      restore.onclick = async () => {
+        try {
+          await saveSeries(false);
+          await api("/api/series/" + state.series.id +
+            "/episodes/" + episode.id + "/archived/" + shot.id + "/restore", "POST", {});
+          await loadSeries(state.series.id);
+          toast("Archived shot restored with its media and edit decisions.");
+        } catch(error) { toast(error.message, true); }
+      };
+      row.append(short, restore);
+      archivePanel.appendChild(row);
+    });
+  }
+  head.appendChild(archivePanel);
   const sceneList = byId("sceneList");
   sceneList.innerHTML = "";
   episode.scenes.forEach((scene, sceneIndex) => {
@@ -615,6 +882,7 @@ function renderEpisodes() {
       ttsWrap.appendChild(player);
     }
     article.appendChild(ttsWrap);
+    article.appendChild(buildProductionControls(episode, scene, sceneIndex));
     sceneList.appendChild(article);
   });
   const motionPreview = byId("animaticPreview");
@@ -676,12 +944,14 @@ function renderEpisodes() {
 }
 
 function setupTabs() {
-  const sections = ["episodes", "bible", "assets", "source"];
+  const sections = ["episodes", "bible", "assets", "history", "source"];
   document.querySelectorAll(".tab").forEach((button) => {
     button.onclick = () => {
       document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b === button));
       sections.forEach(name => byId(name === "episodes" ? "episodeTab" : name + "Tab").hidden =
         name !== button.dataset.tab);
+      if (button.dataset.tab === "history" && state.series)
+        refreshHistory().catch(error => toast(error.message, true));
     };
   });
 }
@@ -768,6 +1038,8 @@ async function refreshJobs() {
 
 async function init() {
   setupTabs();
+  byId("historyRefresh").onclick = () =>
+    refreshHistory().catch(error => toast(error.message, true));
   byId("assetForm").onsubmit = async event => {
     event.preventDefault();
     if (!state.series) return;
