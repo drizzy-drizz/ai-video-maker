@@ -97,6 +97,18 @@
                 <div><button id="buildDramaBoard" class="button primary">Build &amp; Save Drama Shot Board</button></div>
               </div>
               <div id="dramaBoardSummary" class="drama-board-summary"></div>
+              <div class="drama-pipeline-controls">
+                <div class="eyebrow">LOCAL DRAMA PRODUCTION</div><h3>Generate real speaking + cinematic shots</h3>
+                <p class="muted">Route dialogue scenes to an approved, locally configured speech-to-video model, and other scenes to a cinematic video workflow. Existing shots remain unchanged. Outputs are preserved as unapproved retakes until you review them. Audio and actor reference rights must be confirmed.</p>
+                <div class="input-grid">
+                  <label>Cinematic model workflow<select id="dramaCinematicWorkflow"><option value="">Choose a ComfyUI video workflow...</option></select></label>
+                  <label>Talking-actor model workflow<select id="dramaTalkingWorkflow"><option value="">Choose a ComfyUI S2V / talking workflow...</option></select></label>
+                </div>
+                <button id="checkDramaProduction" class="button ghost">Check Drama Production Readiness</button>
+                <button id="generateDramaEpisode" class="button primary">Generate Missing Drama Video Shots</button>
+                <div id="dramaProductionStatus" class="preflight-report" hidden></div>
+                <p class="tiny-note">Actual AI video needs supported local models and substantial GPU VRAM. This workflow does not automatically substitute stock footage or mark unreviewed model output as publish-ready.</p>
+              </div>
               <div class="section-header"><div><div class="eyebrow">SOURCE-ANCHORED CAST</div><h2>Shot direction review</h2></div></div>
               <div id="dramaShotList"></div>
             </div>
