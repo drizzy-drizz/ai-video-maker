@@ -419,6 +419,56 @@ function buildDramaShotControls(episode, scene) {
     review.append(h, explain, idea, approve, discard);
     section.appendChild(review);
   }
+  const voicePanel = document.createElement("div");
+  voicePanel.className = "drama-voice-script";
+  const voiceTitle = document.createElement("strong");
+  voiceTitle.textContent = "SPOKEN DIALOGUE / VOICE SCRIPT · Keep acting separate from speech";
+  const voiceHelp = document.createElement("p");
+  voiceHelp.className = "muted";
+  voiceHelp.textContent = "Enter exactly what the audience should HEAR. This overrides the scene's screenplay ONLY for the local TTS voice track. Leave empty to narrate the full original scene script. Nothing here rewrites your source story or visual direction.";
+  const voiceText = document.createElement("textarea");
+  voiceText.rows = 3;
+  voiceText.maxLength = 4000;
+  voiceText.placeholder = 'e.g. "Mahal kita, pero hindi ko na kaya." / "I never stopped loving you."';
+  voiceText.value = scene.voice_script || "";
+  voiceText.oninput = () => {
+    scene.voice_script = voiceText.value;
+    state.dirty = true;
+  };
+  const voiceActions = document.createElement("div");
+  voiceActions.className = "drama-voice-actions";
+  const extracted = plan?.dialogue || [];
+  if (extracted.length) {
+    const useDialogue = document.createElement("button");
+    useDialogue.className = "button ghost";
+    useDialogue.textContent = "Use source-exact extracted dialogue";
+    useDialogue.onclick = () => {
+      const exact = extracted.map(item => String(item.exact_line || "")).filter(Boolean).join("\n");
+      if (exact.length > 4000)
+        return toast("Extracted dialogue exceeds local voice engine limit. Select the spoken lines manually.", true);
+      voiceText.value = exact;
+      scene.voice_script = exact;
+      state.dirty = true;
+      toast("Source-exact dialogue selected for speech; camera screenplay stays unchanged.");
+    };
+    voiceActions.appendChild(useDialogue);
+  }
+  const clearVoice = document.createElement("button");
+  clearVoice.className = "button ghost";
+  clearVoice.textContent = "Use full scene narration";
+  clearVoice.onclick = () => {
+    voiceText.value = "";
+    scene.voice_script = "";
+    state.dirty = true;
+  };
+  voiceActions.appendChild(clearVoice);
+  const voiceStatus = document.createElement("small");
+  voiceStatus.textContent = scene.narration ?
+    "An audio file is already attached. After changing speech text, regenerate or replace the WAV to hear the new words." :
+    "No speech audio attached yet. Generate Local Narration or add your own permitted WAV after saving.";
+  voicePanel.append(voiceTitle, voiceHelp, voiceText, voiceActions, voiceStatus);
+  section.appendChild(voicePanel);
+
   const audioNote = document.createElement("div");
   audioNote.className = "drama-audio-consent";
   const title = document.createElement("strong");
