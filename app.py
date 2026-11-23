@@ -408,7 +408,7 @@ def generate_scene(series_id: str, episode_id: str, scene_id: str, workflow_name
                     })
                     location = DATA / "media" / series_id
                     location.mkdir(parents=True, exist_ok=True)
-                    destination = location / (scene_id + suffix)
+                    destination = location / (scene_id + "-" + uuid.uuid4().hex[:16] + suffix)
                     local_url(COMFY + "/view?" + query)
                     with urllib.request.urlopen(COMFY + "/view?" + query, timeout=90) as response, open(destination, "wb") as handle:
                         shutil.copyfileobj(response, handle)
@@ -416,15 +416,36 @@ def generate_scene(series_id: str, episode_id: str, scene_id: str, workflow_name
                         raise RuntimeError("ComfyUI returned an empty video")
                     with LOCK:
                         updated = read_project(series_id)
-                        target = pick_scene(pick_episode(updated, episode_id), scene_id)
-                        target["clip"] = str(destination)
-                        target["seed"] = seed
-                        target["provenance"] = {"backend": "ComfyUI", "workflow": workflow_name,
-                                                "prompt_id": prompt_id, "seed": seed,
-                                                "reference_image": str(image_reference) if image_reference else "",
-                                                "generated_at": now()}
+                        episode = pick_episode(updated, episode_id)
+                        target = pick_scene(episode, scene_id)
+                        # If an editor changed this shot while the model was running,
+                        # preserve the newly generated video as an alternate take,
+                        # but never silently discard the user's current selection.
+                        unchanged = all(
+                            str(target.get(key) or "") == str(scene.get(key) or "")
+                            for key in ("clip", "script", "prompt", "reference_asset_id",
+                                        "reference_image", "negative_prompt"))
+                        provenance = {
+                            "backend": "ComfyUI", "workflow": workflow_name,
+                            "prompt_id": prompt_id, "seed": seed,
+                            "reference_image": str(image_reference) if image_reference else "",
+                            "generated_at": now(), "reviewed": False
+                        }
+                        take = take_workspace.add_take(
+                            DATA, series_id, episode_id, target, destination,
+                            title="Generated shot " + str(target.get("number") or "") +
+                                  " · " + workflow_name,
+                            rights="generated_unverified", origin="ComfyUI",
+                            notes="Check video model license, motion and face consistency before publishing",
+                            provenance=provenance, select=unchanged, move=True)
+                        if unchanged:
+                            target["seed"] = seed
+                            scene_workspace.invalidate(episode)
                         save_project(updated)
-                    return str(destination)
+                    if not unchanged:
+                        return ("Generated video preserved as alternate take " + take["id"] +
+                                "; active shot was not replaced because edits changed during inference")
+                    return str(take["path"])
         raise RuntimeError("ComfyUI finished but returned no MP4/WebM/MOV video; use a video-saving node")
     raise TimeoutError("ComfyUI generation exceeded 60 minutes; inspect queue and retry manually")
 
