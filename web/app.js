@@ -110,6 +110,7 @@ async function loadSeries(id) {
     state.dirty = false;
     renderAssets();
     renderEpisodes();
+    renderDramaDirector();
     await refreshLibrary();
     await refreshVoiceStatus();
     if (document.querySelector('[data-tab="history"]')?.classList.contains("active"))
@@ -643,6 +644,79 @@ function buildProductionControls(episode, scene, index) {
   return root;
 }
 
+function renderDramaDirector() {
+  const container = byId("dramaShotList");
+  const summary = byId("dramaBoardSummary");
+  if (!state.series || !state.episodeId) {
+    container.textContent = "Create a series and choose an episode first.";
+    summary.textContent = "";
+    return;
+  }
+  const episode = state.series.episodes.find(ep => ep.id === state.episodeId);
+  if (!episode) return;
+  byId("dramaGenre").value = episode.drama_style || "drama";
+  const directed = episode.scenes.filter(scene => !!scene.drama_plan);
+  summary.textContent = directed.length + " / " + episode.scenes.length +
+    " source-grounded shots have a drama direction. Locked plans are preserved on rebuilding.";
+  container.replaceChildren();
+  episode.scenes.forEach((scene, index) => {
+    const row = document.createElement("div");
+    row.className = "drama-shot-row";
+    const data = scene.drama_plan || {};
+    const top = document.createElement("strong");
+    top.textContent = "Shot " + (index + 1) + " · " +
+      (data.role || "Undirected") + " · " + (data.shot_type || "No camera angle");
+    const content = document.createElement("p");
+    content.textContent = String(scene.script || "").slice(0, 350);
+    const meta = document.createElement("small");
+    meta.textContent = (data.cast?.length ? "Cast: " + data.cast.join(", ") + " · " : "") +
+      (data.location ? "Set: " + data.location + " · " : "") +
+      "Emotion: " + (data.emotion || "not directed") +
+      (data.locked ? " · DIRECTION LOCKED" : "");
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = data.acting || "Build the board to add acting and composition notes. No original dialogue is rewritten.";
+    row.append(top, content, meta, note);
+    const go = document.createElement("button");
+    go.className = "button ghost";
+    go.textContent = "Edit in Shot Timeline";
+    go.onclick = () => {
+      document.querySelector('[data-tab="episodes"]').click();
+      document.querySelectorAll(".production-workspace")[index]?.scrollIntoView({behavior:"smooth",block:"center"});
+    };
+    row.appendChild(go);
+    container.appendChild(row);
+  });
+}
+
+async function refreshDramaCatalog() {
+  const models = await api("/api/drama/models");
+  const area = byId("dramaModelCatalog");
+  area.replaceChildren();
+  models.forEach(model => {
+    const card = document.createElement("div");
+    card.className = "drama-model-card";
+    const head = document.createElement("strong");
+    head.textContent = model.name + " · " + model.task;
+    const detail = document.createElement("p");
+    detail.textContent = model.note;
+    const requirements = document.createElement("small");
+    requirements.textContent =
+      "Hardware: " + model.hardware.replaceAll("_"," ") +
+      " · " + model.license +
+      " · Integration: " + model.integration;
+    const link = document.createElement("a");
+    link.href = model.url; link.target = "_blank"; link.rel = "noopener noreferrer";
+    link.textContent = "Official model GitHub";
+    const source = document.createElement("a");
+    source.href = model.workflow_url; source.target = "_blank";
+    source.rel = "noopener noreferrer";
+    source.textContent = "Workflow / setup reference";
+    card.append(head, detail, requirements, link, source);
+    area.appendChild(card);
+  });
+}
+
 function renderEpisodes() {
   if (!state.series) return;
   byId("episodeCount").textContent = state.series.episodes.length;
@@ -653,7 +727,7 @@ function renderEpisodes() {
     button.className = "episode-button" + (state.episodeId === episode.id ? " active" : "");
     button.innerHTML = "<strong>" + escapeHtml(episode.title) + "</strong><small>" +
       episode.scenes.length + " shots · " + escapeHtml(episode.status) + "</small>";
-    button.onclick = () => { try { flushCaptionEditors(); state.episodeId = episode.id; renderEpisodes(); } catch(e) { toast(e.message, true); } };
+    button.onclick = () => { try { flushCaptionEditors(); state.episodeId = episode.id; renderEpisodes(); renderDramaDirector(); } catch(e) { toast(e.message, true); } };
     list.appendChild(button);
   });
   const episode = state.series.episodes.find(e => e.id === state.episodeId);
@@ -1363,12 +1437,13 @@ function renderEpisodes() {
 }
 
 function setupTabs() {
-  const sections = ["episodes", "bible", "assets", "history", "source"];
+  const sections = ["episodes", "drama", "bible", "assets", "history", "source"];
   document.querySelectorAll(".tab").forEach((button) => {
     button.onclick = () => {
       document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b === button));
       sections.forEach(name => byId(name === "episodes" ? "episodeTab" : name + "Tab").hidden =
         name !== button.dataset.tab);
+      if (button.dataset.tab === "drama" && state.series) renderDramaDirector();
       if (button.dataset.tab === "history" && state.series) {
         refreshHistory().catch(error => toast(error.message, true));
         refreshPortableBackups().catch(error => toast(error.message, true));
@@ -1469,6 +1544,20 @@ async function refreshJobs() {
 
 async function init() {
   setupTabs();
+  byId("buildDramaBoard").onclick = async () => {
+    if (!state.series || !state.episodeId) return toast("Open an episode first.", true);
+    try {
+      await saveSeries(false);
+      const genre = byId("dramaGenre").value;
+      const result = await api("/api/series/" + state.series.id +
+        "/episodes/" + state.episodeId + "/drama-board",
+        "POST", {genre});
+      await loadSeries(state.series.id);
+      document.querySelector('[data-tab="drama"]').click();
+      toast("Drama board saved: " + result.updated + " shots directed, " +
+        result.locked_skipped + " locked manual directions preserved. Original script unchanged.");
+    } catch(error) { toast(error.message, true); }
+  };
   byId("historyRefresh").onclick = () =>
     refreshHistory().catch(error => toast(error.message, true));
   byId("refreshPortableButton").onclick = () =>
@@ -1610,12 +1699,17 @@ async function init() {
   byId("installWorkflow").onclick = async () => {
     try {
       const graph = JSON.parse(byId("workflowText").value);
-      await api("/api/workflows", "POST", { name: byId("workflowName").value, graph });
+      await api("/api/workflows", "POST", {
+        name: byId("workflowName").value,
+        family: byId("workflowFamily").value,
+        graph
+      });
       await refreshWorkflows();
       toast("ComfyUI API workflow installed locally. Your model must also be configured in ComfyUI.");
     } catch (error) { toast(error.message, true); }
   };
-  await Promise.all([refreshLibrary(), refreshHealth(), refreshModels(), refreshWorkflows(), refreshJobs()]);
+  await Promise.all([refreshLibrary(), refreshHealth(), refreshModels(), refreshWorkflows(),
+                     refreshJobs(), refreshDramaCatalog()]);
   setInterval(() => refreshJobs().catch(() => {}), 3500);
   setInterval(() => refreshHealth().catch(() => {}), 18000);
 }
