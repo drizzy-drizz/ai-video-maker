@@ -35,6 +35,7 @@ import drama_studio
 import comfy_drama_bridge
 import drama_production
 import drama_ai
+import screenplay_drafts
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -411,7 +412,7 @@ def post_job(job_type: str, func, *args) -> str:
                         output = func(*args, progress=progress)
                     else:
                         output = func(*args)
-            elif job_type == "drama-ai":
+            elif job_type in ("drama-ai", "screenplay-ai"):
                 def progress(detail):
                     with LOCK:
                         JOBS[job_id]["detail"] = str(detail)[:400]
@@ -466,6 +467,40 @@ def rebuild_drama_board(series_id: str, episode_id: str,
         scene_workspace.invalidate(episode)
         save_project(series)
     return {**result, "board": board}
+
+
+def suggest_screenplay_dialogue(series_id: str, episode_id: str, progress=None) -> str:
+    """Generate review-only dialogue options from the original episode beats."""
+    with LOCK:
+        series = read_project(series_id)
+        episode = copy.deepcopy(pick_episode(series, episode_id))
+    llm = os.environ.get("AIVM_OLLAMA_MODEL", "qwen3:4b")
+    def infer(prompt: str) -> str:
+        result = request_json(OLLAMA + "/api/generate", {
+            "model": llm, "prompt": prompt, "stream": False, "format": "json",
+            "think": False, "options": {"temperature": 0.42, "num_predict": 3500}
+        }, timeout=1800)
+        return str(result.get("response") or "")
+    proposed = screenplay_drafts.propose(
+        series, episode, local_generate=infer, model=llm, progress=progress)
+    with LOCK:
+        updated = read_project(series_id)
+        current = pick_episode(updated, episode_id)
+        if [scene["id"] for scene in current["scenes"]] != [
+                scene["id"] for scene in episode["scenes"]]:
+            raise RuntimeError("Shot ordering changed while local screenplay writing ran")
+        for old, now_scene in zip(episode["scenes"], current["scenes"]):
+            if (old.get("script") != now_scene.get("script") or
+                    old.get("voice_script") != now_scene.get("voice_script") or
+                    old.get("drama_plan") != now_scene.get("drama_plan")):
+                raise RuntimeError(
+                    "Scene dialogue or manually directed shots changed while "
+                    "screenplay was drafting; no stale suggestions attached")
+        for scene, item in zip(current["scenes"], proposed):
+            scene["screenplay_suggestion"] = item
+        save_project(updated)
+    return (f"{len(proposed)} non-destructive screenplay dialogue draft(s) saved "
+            "for review. Original source story, spoken voice script and WAV files unchanged.")
 
 
 def suggest_drama_acting(series_id: str, episode_id: str, progress=None) -> str:
@@ -1690,6 +1725,15 @@ class AppHandler(BaseHTTPRequestHandler):
                 return self.respond({
                     "job_id": post_job("episode-drama", produce_drama_episode,
                                        parts[2], parts[4], cinematic, talking)
+                }, 202)
+            if (len(parts) == 6 and parts[3] == "episodes"
+                    and parts[5] == "screenplay-suggest" and method == "POST"):
+                series = read_project(parts[2])
+                pick_episode(series, parts[4])
+                self.incoming()
+                return self.respond({
+                    "job_id": post_job("screenplay-ai", suggest_screenplay_dialogue,
+                                       parts[2], parts[4])
                 }, 202)
             if len(parts) == 6 and parts[3] == "episodes" and parts[5] == "drama-suggest" and method == "POST":
                 series = read_project(parts[2])
