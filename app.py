@@ -1103,6 +1103,7 @@ def generate_scene_voice(series_id: str, episode_id: str, scene_id: str,
     result = voice_engine.generate_wav(spoken_text, project["language"], engine,
                                        destination, rights_confirmed)
     result["spoken_text_source"] = "human_override" if scene.get("voice_script") else "scene_script"
+    result["spoken_text_sha256"] = comfy_drama_bridge.speech_script_digest(scene)
     with LOCK:
         updated = read_project(series_id)
         target = pick_scene(pick_episode(updated, episode_id), scene_id)
@@ -1145,6 +1146,7 @@ def generate_episode_voices(series_id: str, episode_id: str, engine: str,
                 spoken_text, project["language"], engine, target, rights_confirmed)
             result["spoken_text_source"] = (
                 "human_override" if scene.get("voice_script") else "scene_script")
+            result["spoken_text_sha256"] = comfy_drama_bridge.speech_script_digest(scene)
             created.append({"scene_id": scene["id"], "script": scene["script"],
                             "voice_script": str(scene.get("voice_script") or ""),
                             "previous_narration": scene.get("narration") or "",
