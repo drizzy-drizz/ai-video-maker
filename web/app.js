@@ -576,6 +576,8 @@ function buildProductionControls(episode, scene, index) {
         fx.path = e.target.value;
         fx.track_id = "";
         fx.rights_confirmed = false;
+        rights.checked = false;  // New source requires a new rights confirmation.
+        trackSelect.value = "";
         state.dirty = true;
       };
       pathLabel.appendChild(pathInput);
