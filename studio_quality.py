@@ -245,7 +245,14 @@ def episode_preflight(series: dict, episode: dict) -> dict:
         if len(cast) > 1 and not normalized_path(scene.get("reference_image")):
             if any(c.get("reference_image") for c in cast):
                 add("advisory", "multi_cast_reference", "Multiple characters: only the first matching character image can feed a single-reference workflow", num)
-        narration = normalized_path(scene.get("narration"))
+        embedded_dialogue = bool(scene.get("video_audio_contains_dialogue"))
+        if embedded_dialogue and not info.get("has_audio"):
+            add("blocker", "missing_embedded_dialogue",
+                "Shot is marked as speech-video but the selected clip has no audio stream", num)
+        if embedded_dialogue:
+            add("advisory", "verify_lip_sync",
+                "Generated speaking video audio must be listened to and lip sync manually checked", num)
+        narration = None if embedded_dialogue else normalized_path(scene.get("narration"))
         if narration:
             if not narration.is_file() or narration.suffix.lower() not in AUDIO_EXTENSIONS:
                 add("blocker", "missing_narration", "Narration path is missing or unsupported", num)
