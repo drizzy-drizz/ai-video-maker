@@ -131,6 +131,25 @@ def split(episode: dict, scene_id: str, *, at_seconds: float,
                     "Move its boundary first so no caption is silently discarded.")
         first["caption_cues"] = one
         second["caption_cues"] = two
+    if original.get("sound_effects"):
+        import sound_effects
+        effect_details = sound_effects.validated_effects(original, full)
+        first_effects, second_effects = [], []
+        for fx, details in zip(original["sound_effects"], effect_details):
+            start_offset = details["at_seconds"]
+            end_offset = start_offset + details["play_seconds"]
+            if end_offset <= relative + 0.002:
+                first_effects.append(copy.deepcopy(fx))
+            elif start_offset >= relative - 0.002:
+                shifted = copy.deepcopy(fx)
+                shifted["at_seconds"] = round(start_offset - relative, 4)
+                second_effects.append(shifted)
+            else:
+                raise ValueError(
+                    "A sound effect crosses the split point. Reposition that effect "
+                    "or split its audio into two parts before splitting this scene.")
+        first["sound_effects"] = first_effects
+        second["sound_effects"] = second_effects
     # Preserve original outgoing transition on the second half. The new
     # internal boundary is a hard cut; no unrequested editorial smoothing.
     first["transition_to_next"] = "cut"
