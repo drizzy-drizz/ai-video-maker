@@ -1299,6 +1299,12 @@ function renderEpisodes() {
     byId("animaticVideo").src = prefix;
     const links = byId("animaticAttachments");
     links.replaceChildren();
+    if (episode.status === "edited_needs_new_render") {
+      const outdated = document.createElement("p");
+      outdated.className = "outdated-export";
+      outdated.textContent = "Previous storyboard — the editor has newer changes. Render again before publishing.";
+      links.appendChild(outdated);
+    }
     [
       [prefix, "Download motion storyboard (.mp4)", "storyboard.mp4"],
       [prefix + "/subtitles", "Download editable captions (.srt)", "estimated.srt"],
@@ -1325,6 +1331,12 @@ function renderEpisodes() {
     preview.appendChild(attachments);
   }
   attachments.innerHTML = "";
+  if (episode.status === "edited_needs_new_render" && episode.render_path) {
+    const warning = document.createElement("p");
+    warning.className = "outdated-export";
+    warning.textContent = "Previous MP4 — editing decisions changed after this export. Re-render the current timeline before publishing.";
+    attachments.appendChild(warning);
+  }
   preview.hidden = !episode.render_path;
   if (episode.render_path) {
     const url = "/api/export/" + state.series.id + "/" + episode.id;
