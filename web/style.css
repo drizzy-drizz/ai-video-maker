@@ -97,3 +97,12 @@
 .history-row small{display:block;color:var(--muted);font-size:10px}
 .history-row button{flex:0 0 auto}
 @media(max-width:750px){.production-toolbar{grid-template-columns:1fr}.history-row{align-items:flex-start;flex-direction:column}.take-actions{gap:6px}}
+
+
+/* Local image model drafts, explicit licensing and shot-level approval */
+.draft-image-review{display:grid;gap:9px;align-content:start;padding:12px;background:#14231c;border:1px solid #345748;border-radius:10px;margin:9px 0 17px}
+.draft-image-review>img{display:block;width:100%;max-width:320px;max-height:260px;object-fit:contain;background:#09130f;border:1px solid #2c4939;border-radius:8px}
+.draft-image-review>p{font-size:11px;margin:2px 0}
+.draft-image-review .button{justify-self:start}
+.asset-library-row>.button{min-width:150px;font-size:11px}
+@media(max-width:720px){.asset-library-row{flex-wrap:wrap}.asset-library-row>.button{width:100%}}
