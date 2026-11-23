@@ -187,6 +187,34 @@ function renderAssets() {
   if (!(project.assets || []).length) list.innerHTML = '<p class="muted">Import your first original or licensed image above.</p>';
 }
 
+async function refreshPortableBackups() {
+  if (!state.series) return;
+  const results = await api("/api/series/" + state.series.id + "/backups");
+  const area = byId("portableBackupList");
+  area.replaceChildren();
+  if (!results.length) {
+    area.innerHTML = '<p class="muted">No portable archives created for this series yet.</p>';
+    return;
+  }
+  results.forEach(file => {
+    const row = document.createElement("div");
+    row.className = "history-row";
+    const info = document.createElement("div");
+    const mb = (file.bytes / (1024*1024)).toFixed(1);
+    info.innerHTML = '<strong>' + escapeHtml(file.name) + '</strong>' +
+      '<small>' + escapeHtml(new Date(file.created_at).toLocaleString()) +
+      ' · ' + escapeHtml(mb) + ' MB · includes all referenced media</small>';
+    const download = document.createElement("a");
+    download.className = "button ghost";
+    download.textContent = "Download .aivm.zip";
+    download.href = "/api/series/" + state.series.id + "/backup/" +
+      encodeURIComponent(file.name);
+    download.download = file.name;
+    row.append(info, download);
+    area.appendChild(row);
+  });
+}
+
 async function refreshHistory() {
   if (!state.series) return;
   const list = byId("historyList");
@@ -1092,8 +1120,10 @@ function setupTabs() {
       document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b === button));
       sections.forEach(name => byId(name === "episodes" ? "episodeTab" : name + "Tab").hidden =
         name !== button.dataset.tab);
-      if (button.dataset.tab === "history" && state.series)
+      if (button.dataset.tab === "history" && state.series) {
         refreshHistory().catch(error => toast(error.message, true));
+        refreshPortableBackups().catch(error => toast(error.message, true));
+      }
     };
   });
 }
@@ -1166,7 +1196,17 @@ async function refreshJobs() {
     row.innerHTML = "<strong>" + escapeHtml(job.type) + " · " + escapeHtml(job.status) +
       "</strong><span>" + escapeHtml(job.detail || job.id) + "</span>";
     box.appendChild(row);
-    if (state.jobs[job.id] && state.jobs[job.id] !== job.status && job.status === "completed" && state.series) {
+    if (state.jobs[job.id] && state.jobs[job.id] !== job.status &&
+        job.status === "completed" && job.type === "project-import") {
+      loadSeries(job.detail);
+      toast("Portable project restored with a new series ID. Media and edit decisions were imported.");
+    } else if (state.jobs[job.id] && state.jobs[job.id] !== job.status &&
+               job.status === "completed" && job.type === "project-backup") {
+      if (state.series) refreshPortableBackups().catch(error => toast(error.message, true));
+      toast("Portable project archive created; open History / Recovery to download it.");
+    }
+    if (state.jobs[job.id] && state.jobs[job.id] !== job.status && job.status === "completed" && state.series
+        && job.type !== "project-backup" && job.type !== "project-import") {
       if (state.dirty) { toast("Job complete. Save your pending scene edits before reopening the series."); }
       else loadSeries(state.series.id);
       toast("Job completed: " + job.type + ". Footage/exports refreshed.");
@@ -1182,6 +1222,41 @@ async function init() {
   setupTabs();
   byId("historyRefresh").onclick = () =>
     refreshHistory().catch(error => toast(error.message, true));
+  byId("refreshPortableButton").onclick = () =>
+    refreshPortableBackups().catch(error => toast(error.message, true));
+  byId("createPortableButton").onclick = async () => {
+    if (!state.series) return;
+    if (!window.confirm(
+      "Create a full portable ZIP backup including referenced footage and music? It can be very large and takes local disk space."))
+      return;
+    try {
+      await saveSeries(false);
+      const result = await api("/api/series/" + state.series.id + "/backup", "POST", {});
+      state.jobs[result.job_id] = "queued";
+      toast("Complete project/media backup queued. Progress appears under Background Jobs.");
+      refreshJobs();
+    } catch(error) { toast(error.message, true); }
+  };
+  byId("importPortableButton").onclick = async () => {
+    const picked = byId("portableImportFile").files[0];
+    if (!picked) return toast("Choose a .aivm.zip file to import.", true);
+    if (!window.confirm(
+      "Import this portable project into a NEW series? Existing saved projects will not be overwritten."))
+      return;
+    const control = byId("importPortableButton");
+    control.disabled = true;
+    try {
+      const result = await fetch("/api/import-package", {
+        method: "POST", headers: {"Content-Type": "application/octet-stream"}, body: picked
+      });
+      const data = await result.json();
+      if (!result.ok) throw new Error(data.error || "Failed to import portable package");
+      state.jobs[data.job_id] = "queued";
+      toast("Portable project import queued. You will be taken to the new restored series when ready.");
+      refreshJobs();
+    } catch(error) { toast(error.message, true); }
+    finally { control.disabled = false; }
+  };
   byId("assetForm").onsubmit = async event => {
     event.preventDefault();
     if (!state.series) return;
