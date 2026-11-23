@@ -110,7 +110,7 @@ def report(series: dict, episode: dict) -> dict:
 
 def produce_missing(series_id: str, episode_id: str, cinematic_workflow: str,
                     talking_workflow: str, *,
-                    load_project, get_episode, save_project, generate_scene,
+                    load_project, get_episode, prepare_board, generate_scene,
                     workflow_path, progress=None) -> str:
     """One real resumable batch with model-specific routing per shot.
 
@@ -126,13 +126,11 @@ def produce_missing(series_id: str, episode_id: str, cinematic_workflow: str,
     if not all((scene.get("drama_plan") or {}).get("source_script") ==
                str(scene.get("script") or "").strip()
                for scene in episode["scenes"]):
-        with __import__("threading").RLock():
-            # Use caller-provided project commit to persist the plan in this
-            # same series, without overwriting editable prompts or original story.
-            board = drama_studio.board_for_episode(
-                series, episode, genre=episode.get("drama_style") or "drama")
-            drama_studio.apply_board(series, episode, board, preserve_locked=True)
-            save_project(series)
+        # Re-read and acquire the application's global project lock inside
+        # prepare_board, preventing lost edits from an asynchronous model job.
+        prepare_board(series_id, episode_id)
+        series = load_project(series_id)
+        episode = get_episode(series, episode_id)
     missing = [s["id"] for s in episode["scenes"]
                if not s.get("clip") or not Path(str(s["clip"])).is_file()]
     if not missing:
