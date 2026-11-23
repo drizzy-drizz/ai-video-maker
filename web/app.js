@@ -679,6 +679,128 @@ function renderEpisodes() {
     (episode.soundtrack_rights_confirmed ? " checked" : "") +
     '> I own or have permission to use this soundtrack</label>';
   head.appendChild(music);
+  const musicDesk = document.createElement("div");
+  musicDesk.className = "music-workspace";
+  const musicHeading = document.createElement("strong");
+  musicHeading.textContent = "LOCAL MUSIC LIBRARY · Precision Mixing";
+  const libraryLabel = document.createElement("label");
+  libraryLabel.textContent = "Choose a previously imported, licensed audio track";
+  const librarySelect = document.createElement("select");
+  const emptyChoice = document.createElement("option");
+  emptyChoice.value = "";
+  emptyChoice.textContent = "Manual path / no library track";
+  librarySelect.appendChild(emptyChoice);
+  (state.series.music_library || []).forEach(track => {
+    const choice = document.createElement("option");
+    choice.value = track.id;
+    choice.textContent = track.title + " · " + track.duration + "s · " + track.rights;
+    librarySelect.appendChild(choice);
+  });
+  librarySelect.value = episode.soundtrack_track_id || "";
+  const musicPlayer = document.createElement("audio");
+  musicPlayer.controls = true; musicPlayer.preload = "none";
+  musicPlayer.className = "music-player";
+  musicPlayer.hidden = !episode.soundtrack_track_id;
+  if (episode.soundtrack_track_id)
+    musicPlayer.src = "/api/series/" + state.series.id + "/music/" + episode.soundtrack_track_id;
+  librarySelect.onchange = e => {
+    const track = (state.series.music_library || []).find(t => t.id === e.target.value);
+    episode.soundtrack_track_id = track ? track.id : "";
+    if (track) {
+      episode.soundtrack = track.path;
+      episode.soundtrack_rights_confirmed = true;
+      music.querySelector(".storyboard-music-path").value = track.path;
+      music.querySelector(".storyboard-music-rights").checked = true;
+      musicPlayer.src = "/api/series/" + state.series.id + "/music/" + track.id;
+      musicPlayer.hidden = false;
+    } else {
+      episode.soundtrack = "";
+      episode.soundtrack_rights_confirmed = false;
+      music.querySelector(".storyboard-music-path").value = "";
+      music.querySelector(".storyboard-music-rights").checked = false;
+      musicPlayer.removeAttribute("src");
+      musicPlayer.hidden = true;
+    }
+    state.dirty = true;
+  };
+  libraryLabel.appendChild(librarySelect);
+  musicDesk.append(musicHeading, libraryLabel, musicPlayer);
+  const musicImport = document.createElement("div");
+  musicImport.className = "music-import";
+  const audioFile = document.createElement("input");
+  audioFile.type = "file";
+  audioFile.accept = ".wav,.mp3,.m4a,.flac,.ogg,.opus,.aac";
+  const musicRights = document.createElement("select");
+  [
+    ["", "Confirm soundtrack usage rights"],
+    ["original", "Original / my recording"],
+    ["licensed", "Licensed for my use"],
+    ["permission", "Creator permission"],
+    ["public_domain", "Verified public domain"]
+  ].forEach(([key, label]) => {
+    const option = document.createElement("option");
+    option.value = key; option.textContent = label;
+    musicRights.appendChild(option);
+  });
+  const uploadSong = document.createElement("button");
+  uploadSong.className = "button ghost";
+  uploadSong.textContent = "Import Audio to Library";
+  uploadSong.onclick = async () => {
+    const picked = audioFile.files[0];
+    if (!picked) return toast("Choose an audio file to import.", true);
+    if (!musicRights.value) return toast("Confirm usage rights to this audio file.", true);
+    uploadSong.disabled = true;
+    try {
+      await saveSeries(false);
+      const params = new URLSearchParams({
+        filename: picked.name, title: picked.name,
+        rights: musicRights.value, notes: "Music imported from native file picker"
+      });
+      const res = await fetch("/api/series/" + state.series.id +
+        "/music-upload?" + params.toString(), {
+          method: "POST", headers: {"Content-Type": "application/octet-stream"}, body: picked
+        });
+      const track = await res.json();
+      if (!res.ok) throw new Error(track.error || "Music upload failed");
+      await api("/api/series/" + state.series.id + "/episodes/" +
+        episode.id + "/music-select", "POST", { track_id: track.id });
+      await loadSeries(state.series.id);
+      toast("Licensed music imported and selected; start time/volume controls are now editable.");
+    } catch(error) { toast(error.message, true); }
+    finally { uploadSong.disabled = false; }
+  };
+  musicImport.append(audioFile, musicRights, uploadSong);
+  musicDesk.appendChild(musicImport);
+
+  const musicParams = document.createElement("div");
+  musicParams.className = "music-parameters";
+  [
+    ["soundtrack_start_seconds", "Start song at (seconds)", 0, 86400, .1, 0],
+    ["soundtrack_gain", "Background music gain (0–1)", 0, 1, .01, .12],
+    ["soundtrack_fade_in_seconds", "Fade in (s)", 0, 30, .1, 0],
+    ["soundtrack_fade_out_seconds", "Fade out (s)", 0, 30, .1, 1]
+  ].forEach(([field, label, min, max, step, fallback]) => {
+    const fieldLabel = document.createElement("label");
+    fieldLabel.textContent = label;
+    const numeric = document.createElement("input");
+    numeric.type = "number"; numeric.min = String(min); numeric.max = String(max);
+    numeric.step = String(step); numeric.value = episode[field] ?? fallback;
+    numeric.oninput = e => {
+      episode[field] = e.target.value === "" ? fallback : Number(e.target.value);
+      state.dirty = true;
+    };
+    fieldLabel.appendChild(numeric);
+    musicParams.appendChild(fieldLabel);
+  });
+  const looping = document.createElement("label");
+  const shouldLoop = document.createElement("input");
+  shouldLoop.type = "checkbox"; shouldLoop.checked = episode.soundtrack_loop !== false;
+  shouldLoop.onchange = e => { episode.soundtrack_loop = e.target.checked; state.dirty = true; };
+  looping.append(shouldLoop, document.createTextNode(" Loop track to cover full episode"));
+  musicParams.appendChild(looping);
+  musicDesk.appendChild(musicParams);
+  head.appendChild(musicDesk);
+
   const captionMode = document.createElement("label");
   captionMode.className = "caption-mode-select";
   captionMode.textContent = "Final video subtitle display";
@@ -730,7 +852,11 @@ function renderEpisodes() {
   batchVoice.append(batchTitle, batchSelect, batchRights, batchButton, batchNote);
   head.appendChild(batchVoice);
   music.querySelector(".storyboard-music-path").oninput = e => {
-    episode.soundtrack = e.target.value; state.dirty = true;
+    episode.soundtrack = e.target.value;
+    episode.soundtrack_track_id = "";
+    librarySelect.value = "";
+    musicPlayer.removeAttribute("src"); musicPlayer.hidden = true;
+    state.dirty = true;
   };
   music.querySelector(".storyboard-music-rights").onchange = e => {
     episode.soundtrack_rights_confirmed = e.target.checked; state.dirty = true;
