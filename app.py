@@ -30,6 +30,7 @@ import take_workspace
 import revision_workspace
 import portable_workspace
 import music_workspace
+import sound_effects
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -785,8 +786,12 @@ def render_episode(series_id: str, episode_id: str) -> str:
                     "-preset", "veryfast", "-c:a", "aac", "-b:a", "160k",
                     "-ar", "48000", "-ac", "2", "-t", f"{duration:.6f}", str(dest)]
         run_command(command)
-        converted.append(dest)
-        durations.append(quality.media_info(dest)["duration"])
+        ready = dest
+        if scene.get("sound_effects"):
+            ready = work / f"scene-{i:05d}-sfx.mp4"
+            sound_effects.mix_scene_effects(dest, scene, duration, ready)
+        converted.append(ready)
+        durations.append(quality.media_info(ready)["duration"])
     encoded_timeline = timeline_engine.with_durations(planned_timeline["entries"], durations)
     assembled = timeline_engine.assemble_segments(converted, encoded_timeline, work)
     exports = DATA / "exports" / series_id
@@ -813,6 +818,10 @@ def render_episode(series_id: str, episode_id: str) -> str:
     qc["caption_export"] = caption_output["mode"]
     qc["subtitles"] = "manual cues where supplied; otherwise approximate scene timing — review before publishing"
     qc["music_included"] = bool(soundtrack)
+    qc["scene_sfx_count"] = sum(len(scene.get("sound_effects") or []) for scene in scenes)
+    qc["soundtrack_settings"] = (
+        animatic.soundtrack_settings(episode, quality.media_info(soundtrack)["duration"])
+        if soundtrack else None)
     qc["timeline"] = {
         "source_trims": len(scenes), "crossfades": encoded_timeline["crossfades"],
         "total_seconds": encoded_timeline["total_seconds"],
