@@ -175,12 +175,14 @@ def import_package(root: Path, archive: Path, progress=None) -> dict:
                 raise ValueError("Required media missing or duplicated in archive")
             described.add(arcname)
             store = str(record["store_relative"]).replace("@SERIES@", series_id)
-            if Path(store).parts[0] not in ("takes", "assets", "narrations", "exports",
-                                             "media", "animatic", "imported-media"):
+            family = Path(store).parts[0]
+            if family not in ("takes", "assets", "narrations", "exports",
+                              "media", "animatic", "imported-media"):
                 raise ValueError("Archive attempted to write to an unsupported workspace folder")
             target = (root / store).resolve()
-            if not target.is_relative_to(root.resolve()):
-                raise ValueError("Archive target tries to write outside local workspace")
+            allowed_base = (root / family / series_id).resolve()
+            if not target.is_relative_to(allowed_base):
+                raise ValueError("Archive target is outside the new series' private media directory")
             info = pack.getinfo(arcname)
             size = int(record["bytes"])
             if size < 0 or info.file_size != size:
